@@ -135,13 +135,33 @@ function openModal(title, subtitle, node) {
   content.innerHTML = '';
   if (node) content.appendChild(node);
   modal.classList.remove('hidden');
-  const mc = modal.querySelector('.modal-content');
-  if (mc) mc.classList.remove('opacity-0', 'scale-95');
+  
+  requestAnimationFrame(() => {
+    const mc = modal.querySelector('.modal-content');
+    if (mc) {
+      mc.classList.remove('opacity-0', 'scale-95');
+      mc.classList.add('show');
+    }
+  });
+  
+  const closeBtn = document.getElementById('close-modal-btn');
+  if (closeBtn) closeBtn.focus();
 }
 
 function closeModal() {
   const modal = document.getElementById('account-modal');
-  modal.classList.add('hidden');
+  const mc = modal.querySelector('.modal-content');
+  
+  if (mc) {
+    mc.classList.remove('show');
+    mc.classList.add('opacity-0', 'scale-95');
+    
+    setTimeout(() => {
+      modal.classList.add('hidden');
+    }, 300);
+  } else {
+    modal.classList.add('hidden');
+  }
 }
 
 async function onCardClick(kind, ids) {
