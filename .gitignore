@@ -1,0 +1,26 @@
+# Python caches
+__pycache__/
+*.pyc
+
+# Virtual environments
+.venv/
+
+# Local environment files
+.env
+.DS_Store
+
+# Local databases (do not commit)
+*.db
+python/*.db
+python/devin_teller.db
+python/devin_teller.db.backup
+
+# TLS certificates / private keys (never commit)
+cert.pem
+private_key.pem
+python/cert.pem
+python/private_key.pem
+
+# Node/npm (if ever used)
+node_modules/
+

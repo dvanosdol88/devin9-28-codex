@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LLC Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://rsms.me/">
+  <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <div class="min-h-screen">
+    <header class="bg-white border-b border-slate-200">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div class="flex items-center justify-between">
+          <h1 class="text-xl font-semibold">LLC Financial Dashboard</h1>
+          <div class="flex items-center gap-3">
+            <button id="connect-btn" class="hidden px-3 py-2 rounded bg-indigo-600 text-white">Connect</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div id="llc-bank" class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 cursor-pointer hover:shadow transition">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-sm text-slate-500">LLC Checking</div>
+              <div class="mt-1 text-2xl font-semibold" id="llc-bank-balance">—</div>
+            </div>
+            <div class="text-slate-400">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 6h18M3 10h18M7 14h10M9 18h6"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <div id="llc-savings" class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 cursor-pointer hover:shadow transition">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-sm text-slate-500">LLC Savings</div>
+              <div class="mt-1 text-2xl font-semibold" id="llc-savings-balance">—</div>
+            </div>
+            <div class="text-slate-400">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 6h18M3 10h18M7 14h10M9 18h6"/></svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="account-modal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-slate-900/40"></div>
+    <div class="relative mx-auto max-w-2xl mt-20">
+      <div class="modal-content bg-white rounded-xl shadow-xl transform transition p-5">
+        <div class="flex items-start justify-between">
+          <div>
+            <div id="modal-title" class="text-lg font-semibold">Account</div>
+            <div id="modal-subtitle" class="text-sm text-slate-500"></div>
+          </div>
+          <button id="close-modal-btn" class="text-slate-500 hover:text-slate-700">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div id="modal-tab-content" class="mt-4"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/app.js?v=ts1"></script>
+</body>
+</html>

@@ -1,0 +1,506 @@
+
+-----
+
+### \#\# Step 1: Initialize the Logging System
+
+**Goal:** Establish a basic, robust logging configuration using Python's standard library. This change is foundational and low-risk.
+
+#### **File to Modify:** `python/teller.py`
+
+#### **Instructions:**
+
+1.  **Import necessary modules:** Add `logging`, `os`, and `sys` to the top of the file.
+2.  **Configure `basicConfig`:** Add the logging setup code immediately after the imports. This will configure a global logger that directs output to the console.
+3.  **Replace initial `print` statements:** Change the `print` calls in the `main()` function to `logger.info` to verify the new system is working.
+
+#### **Code Block for Step 1 (`python/teller.py`):**
+
+```python
+import os
+from wsgiref import simple_server
+
+import argparse
+import base64
+import falcon
+import requests
+import logging
+import sys
+
+# --- Add this logging configuration ---
+# Configure logging to output to the console.
+# The log level is read from an environment variable, defaulting to INFO.
+log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=log_level,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    stream=sys.stdout,
+)
+# Create a logger instance for this module.
+logger = logging.getLogger(__name__)
+# --- End of new code ---
+
+class TellerClient:
+    # ... (rest of the class is unchanged) ...
+    # ...
+    
+# ... (all other classes are unchanged for now) ...
+
+def main():
+    args = _parse_args()
+    cert = (args.cert, args.cert_key) if (args.cert and args.cert_key) else None
+    client = TellerClient(cert)
+
+    try:
+        from db import init_db
+        init_db()
+        # --- Change this line ---
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        # --- Change this line and add exc_info ---
+        logger.error(f"Database initialization failed: {e}", exc_info=True)
+        return 1
+
+    # --- Change this line ---
+    logger.info("Starting up ...")
+
+    accounts = AccountsResource(client)
+    health = HealthResource()
+    # ... (rest of the function is unchanged) ...
+    httpd = simple_server.make_server('', int(port), app)
+
+    # --- Change this line ---
+    logger.info(f"Listening on port {port}, press ^C to stop.\n")
+
+    httpd.serve_forever()
+
+if __name__ == '__main__':
+    main()
+```
+
+-----
+
+#### **Sandbox Testing Plan for Step 1:**
+
+1.  **Start the Backend Server:**
+    ```bash
+    cd python
+    python teller.py --environment sandbox
+    ```
+2.  **Verify Console Output:**
+      * Check the terminal where the server is running. You should see log messages formatted with a timestamp, log level, and the message itself.
+      * **Expected Output:**
+        ```
+        2025-09-24 18:30:00,123 - INFO - Database initialized successfully
+        2025-09-24 18:30:00,124 - INFO - Starting up ...
+        2025-09-24 18:30:00,125 - INFO - Listening on port 8001, press ^C to stop.
+        ```
+3.  **Confirmation:** If you see these formatted logs, Step 1 was successful. The core logging system is now in place.
+
+-----
+
+### \#\# Step 2: Replace All Remaining `print()` Statements
+
+**Goal:** Systematically replace all remaining `print()` statements with structured `logger` calls to ensure all application events are captured consistently.
+
+#### **File to Modify:** `python/teller.py`
+
+#### **Instructions:**
+
+Locate every `print()` call within the `AccountsResource` class and replace it with a `logger` call. Use `logger.error` for exceptions and include the `exc_info=True` parameter to capture the full stack trace.
+
+#### **Code Block for Step 2 (`python/teller.py`):**
+
+```python
+# ... (imports and logging config from Step 1) ...
+
+class AccountsResource:
+    # ... (init and other on_get methods) ...
+
+    def on_get_balances(self, req, resp, account_id):
+        def store_balances(client):
+            teller_response = client.get_account_balances(account_id)
+            if teller_response.status_code == 200:
+                try:
+                    # ... (database logic) ...
+                except Exception as e:
+                    # --- Change this line ---
+                    logger.error(f"Error storing balance snapshot for account {account_id}", exc_info=True)
+            return teller_response
+        self._proxy(req, resp, store_balances)
+
+    def on_get_transactions(self, req, resp, account_id):
+        def store_transactions(client):
+            # ... (database logic) ...
+            if teller_response.status_code == 200:
+                try:
+                    # ... (database logic) ...
+                except Exception as e:
+                    # --- Change this line ---
+                    logger.error(f"Error storing transactions for account {account_id}", exc_info=True)
+            return teller_response
+        self._proxy(req, resp, store_transactions)
+        
+    # ... (other on_get/on_post methods) ...
+
+    def on_get_cached_transactions(self, req, resp, account_id):
+        try:
+            # ... (database logic) ...
+            resp.media = [r.raw for r in rows]
+        except Exception as e:
+            # --- Change this line ---
+            logger.error(f"Error retrieving cached transactions for account {account_id}", exc_info=True)
+            resp.media = []
+
+    def on_get_cached_balances(self, req, resp, account_id):
+        try:
+            # ... (database logic) ...
+            resp.media = latest.raw if latest else {}
+        except Exception as e:
+            # --- Change this line ---
+            logger.error(f"Error retrieving cached balances for account {account_id}", exc_info=True)
+            resp.media = {}
+
+    def _proxy(self, req, resp, fun):
+        # ... (rest of the method is unchanged) ...
+```
+
+-----
+
+#### **Sandbox Testing Plan for Step 2:**
+
+1.  **Start Backend and Frontend Servers.**
+2.  **Open the Web Application:** Navigate to `http://localhost:8000`.
+3.  **Connect and Enroll:** Use the "Connect" button and complete the sandbox enrollment flow.
+4.  **Trigger API Calls:** Once accounts are listed, click on them to view details, balances, and transactions. This will trigger the backend methods.
+5.  **Verify Console Output:**
+      * Watch the backend server's console. You should see `INFO` logs for successful operations (if you add them) and no unformatted `print` statements.
+      * Intentionally introduce a temporary error (e.g., a typo in a variable name inside a `try` block) to confirm that `logger.error` is called and a full stack trace is printed.
+6.  **Confirmation:** If all `print` statements are gone and errors are logged with stack traces, Step 2 is successful.
+
+-----
+
+### \#\# Step 3: Harden API Error Responses
+
+**Goal:** Stop "swallowing" errors. Modify the API to return proper HTTP 500 status codes and a JSON error message when something goes wrong internally. This makes the API more robust and predictable.
+
+#### **File to Modify:** `python/teller.py`
+
+#### **Instructions:**
+
+In the `except` blocks for the cached data endpoints, in addition to logging the error, set `resp.status` to `falcon.HTTP_500` and `resp.media` to a JSON object containing an error message.
+
+#### **Code Block for Step 3 (`python/teller.py`):**
+
+```python
+# ... (imports and logging config from Step 1) ...
+
+class AccountsResource:
+    # ... (other methods are unchanged) ...
+
+    def on_get_cached_transactions(self, req, resp, account_id):
+        try:
+            from db import SessionLocal, Transaction
+            limit = int(req.get_param('limit', default=100))
+            with SessionLocal() as s:
+                rows = (s.query(Transaction)
+                          .filter_by(account_id=account_id)
+                          .order_by(Transaction.date.desc())
+                          .limit(limit)
+                          .all())
+                resp.media = [r.raw for r in rows]
+        except Exception as e:
+            logger.error(f"Error retrieving cached transactions for account {account_id}", exc_info=True)
+            # --- Add these lines ---
+            resp.status = falcon.HTTP_500
+            resp.media = {"error": "Failed to retrieve cached transactions."}
+
+    def on_get_cached_balances(self, req, resp, account_id):
+        try:
+            from db import SessionLocal, BalanceSnapshot
+            with SessionLocal() as s:
+                latest = (s.query(BalanceSnapshot)
+                           .filter_by(account_id=account_id)
+                           .order_by(BalanceSnapshot.as_of.desc())
+                           .first())
+                resp.media = latest.raw if latest else {}
+        except Exception as e:
+            logger.error(f"Error retrieving cached balances for account {account_id}", exc_info=True)
+            # --- Add these lines ---
+            resp.status = falcon.HTTP_500
+            resp.media = {"error": "Failed to retrieve cached balances."}
+
+    # ... (rest of the class is unchanged) ...
+```
+
+-----
+
+#### **Sandbox Testing Plan for Step 3:**
+
+1.  **Start the Backend Server.**
+2.  **Simulate a Database Error:** The easiest way to do this is to temporarily rename the database file (`devin_teller.db`) or misconfigure the `DATABASE_URL` if you are using it.
+3.  **Use `curl` to Call a Cached Endpoint:** From your terminal, make a request to an endpoint that you expect to fail. Replace `{ACCOUNT_ID}` with a real ID from a previous session if you have one.
+    ```bash
+    curl -v http://localhost:8001/api/db/accounts/{ACCOUNT_ID}/balances
+    ```
+4.  **Verify the `curl` Output:**
+      * Check the HTTP status code. It should be `500 Internal Server Error`.
+      * Check the response body. It should be a JSON object like `{"error": "Failed to retrieve cached balances."}`.
+      * **Expected `curl` Output Snippet:**
+        ```
+        < HTTP/1.1 500 Internal Server Error
+        < Content-Type: application/json
+        ...
+        {"error":"Failed to retrieve cached balances."}
+        ```
+5.  **Check Backend Logs:** The backend console should show a full stack trace for the error.
+6.  **Confirmation:** If you receive a 500 error with the correct JSON body, Step 3 is successful. The API now communicates failures clearly.
+
+-----
+
+### \#\# Complete File (`python/teller.py`) with All Changes
+
+For your convenience, here is the complete `python/teller.py` file with all the changes from Steps 1, 2, and 3 integrated. You can use this file to apply all the improvements at once.
+
+```python
+import os
+from wsgiref import simple_server
+import argparse
+import base64
+import falcon
+import requests
+import logging
+import sys
+
+# Configure logging to output to the console.
+# The log level is read from an environment variable, defaulting to INFO.
+log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=log_level,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    stream=sys.stdout,
+)
+logger = logging.getLogger(__name__)
+
+class TellerClient:
+    _BASE_URL = 'https://api.teller.io'
+
+    def __init__(self, cert, access_token=None):
+        self.cert = cert
+        self.access_token = access_token
+
+    def for_user(self, access_token):
+        return TellerClient(self.cert, access_token)
+
+    def list_accounts(self):
+        return self._get('/accounts')
+
+    def get_account_details(self, account_id):
+        return self._get(f'/accounts/{account_id}/details')
+
+    def get_account_balances(self, account_id):
+        return self._get(f'/accounts/{account_id}/balances')
+
+    def list_account_transactions(self, account_id, count=None):
+        params = {'count': count} if count else None
+        return self._get(f'/accounts/{account_id}/transactions', params=params)
+
+    def list_account_payees(self, account_id, scheme):
+        return self._get(f'/accounts/{account_id}/payments/{scheme}/payees')
+
+    def create_account_payee(self, account_id, scheme, data):
+        return self._post(f'/accounts/{account_id}/payments/{scheme}/payees', data)
+
+    def create_account_payment(self, account_id, scheme, data):
+        return self._post(f'/accounts/{account_id}/payments/{scheme}', data)
+
+    def _get(self, path, params=None):
+        return self._request('GET', path, params=params)
+
+    def _post(self, path, data):
+        return self._request('POST', path, data=data)
+
+    def _request(self, method, path, data=None, params=None):
+        url = self._BASE_URL + path
+        auth = (self.access_token, '')
+        kwargs = {'json': data, 'auth': auth, 'params': params}
+        if self.cert and all(self.cert):
+            kwargs['cert'] = self.cert
+        return requests.request(method, url, **kwargs)
+
+class HealthResource:
+    def on_get(self, req, resp):
+        resp.media = {"status": "ok"}
+
+class AccountsResource:
+    def __init__(self, client):
+        self._client = client
+
+    def on_get(self, req, resp):
+        self._proxy(req, resp, lambda client: client.list_accounts())
+
+    def on_get_details(self, req, resp, account_id):
+        self._proxy(req, resp, lambda client: client.get_account_details(account_id))
+
+    def on_get_balances(self, req, resp, account_id):
+        def store_balances(client):
+            teller_response = client.get_account_balances(account_id)
+            if teller_response.status_code == 200:
+                try:
+                    from db import SessionLocal, add_balance_snapshot, upsert_account
+                    account_response = client.get_account_details(account_id)
+                    if account_response.status_code == 200:
+                        acct = account_response.json() or {}
+                        acct["id"] = account_id
+                        with SessionLocal() as s:
+                            upsert_account(s, acct)
+                            add_balance_snapshot(s, account_id, teller_response.json())
+                            s.commit()
+                except Exception as e:
+                    logger.error(f"Error storing balance snapshot for account {account_id}", exc_info=True)
+            return teller_response
+        self._proxy(req, resp, store_balances)
+
+    def on_get_transactions(self, req, resp, account_id):
+        def store_transactions(client):
+            try:
+                count = req.get_param_as_int('count') or None
+            except Exception:
+                count = None
+            teller_response = client.list_account_transactions(account_id, count=count)
+            if teller_response.status_code == 200:
+                try:
+                    from db import SessionLocal, upsert_transactions, upsert_account
+                    account_response = client.get_account_details(account_id)
+                    if account_response.status_code == 200:
+                        acct = account_response.json() or {}
+                        acct["id"] = account_id
+                        with SessionLocal() as s:
+                            upsert_account(s, acct)
+                            upsert_transactions(s, account_id, teller_response.json())
+                            s.commit()
+                except Exception as e:
+                    logger.error(f"Error storing transactions for account {account_id}", exc_info=True)
+            return teller_response
+        self._proxy(req, resp, store_transactions)
+
+    def on_get_payees(self, req, resp, account_id, scheme):
+        self._proxy(req, resp, lambda client: client.list_account_payees(account_id, scheme))
+
+    def on_post_payees(self, req, resp, account_id, scheme):
+        self._proxy(req, resp, lambda client: client.create_account_payee(account_id, scheme, req.media))
+
+    def on_post_payments(self, req, resp, account_id, scheme):
+        self._proxy(req, resp, lambda client: client.create_account_payment(account_id, scheme, req.media))
+
+    def on_get_cached_transactions(self, req, resp, account_id):
+        try:
+            from db import SessionLocal, Transaction
+            limit = int(req.get_param('limit', default=100))
+            with SessionLocal() as s:
+                rows = (s.query(Transaction)
+                          .filter_by(account_id=account_id)
+                          .order_by(Transaction.date.desc())
+                          .limit(limit)
+                          .all())
+                resp.media = [r.raw for r in rows]
+        except Exception as e:
+            logger.error(f"Error retrieving cached transactions for account {account_id}", exc_info=True)
+            resp.status = falcon.HTTP_500
+            resp.media = {"error": "Failed to retrieve cached transactions."}
+
+    def on_get_cached_balances(self, req, resp, account_id):
+        try:
+            from db import SessionLocal, BalanceSnapshot
+            with SessionLocal() as s:
+                latest = (s.query(BalanceSnapshot)
+                           .filter_by(account_id=account_id)
+                           .order_by(BalanceSnapshot.as_of.desc())
+                           .first())
+                resp.media = latest.raw if latest else {}
+        except Exception as e:
+            logger.error(f"Error retrieving cached balances for account {account_id}", exc_info=True)
+            resp.status = falcon.HTTP_500
+            resp.media = {"error": "Failed to retrieve cached balances."}
+
+    def _proxy(self, req, resp, fun):
+        token = self._extract_token(req)
+        user_client = self._client.for_user(token)
+        teller_response = fun(user_client)
+        
+        if teller_response.content:
+            resp.media = teller_response.json()
+
+        resp.status = falcon.code_to_http_status(teller_response.status_code)
+
+    def _extract_token(self, req):
+        auth_header = req.get_header('Authorization') or ''
+        if auth_header.startswith('Basic '):
+            try:
+                b64 = auth_header.split(' ', 1)[1].strip()
+                decoded = base64.b64decode(b64).decode('utf-8')
+                username, _, _ = decoded.partition(':')
+                return username
+            except Exception:
+                return ''
+        return auth_header
+
+def _parse_args():
+    parser = argparse.ArgumentParser(description='Interact with Teller')
+    parser.add_argument('--environment',
+            default='sandbox',
+            choices=['sandbox', 'development', 'production'],
+            help='API environment to target')
+    parser.add_argument('--cert', type=str,
+            help='path to the TLS certificate')
+    parser.add_argument('--cert-key', type=str,
+            help='path to the TLS certificate private key')
+    args = parser.parse_args()
+    needs_cert = args.environment in ['development', 'production']
+    has_cert = args.cert and args.cert_key
+    if needs_cert and not has_cert:
+        parser.error('--cert and --cert-key are required when --environment is not sandbox')
+    return args
+
+def main():
+    args = _parse_args()
+    cert = (args.cert, args.cert_key) if (args.cert and args.cert_key) else None
+    client = TellerClient(cert)
+
+    try:
+        from db import init_db
+        init_db()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Database initialization failed: {e}", exc_info=True)
+        return 1
+
+    logger.info("Starting up ...")
+    accounts = AccountsResource(client)
+    health = HealthResource()
+    app = falcon.App(
+        middleware=falcon.CORSMiddleware(allow_origins='*', allow_credentials='*')
+    )
+    app.add_route('/health', health)
+    app.add_route('/api/accounts', accounts)
+    app.add_route('/api/accounts/{account_id}/details', accounts,
+            suffix='details')
+    app.add_route('/api/accounts/{account_id}/balances', accounts,
+            suffix='balances')
+    app.add_route('/api/accounts/{account_id}/transactions', accounts,
+            suffix='transactions')
+    app.add_route('/api/accounts/{account_id}/payments/{scheme}/payees', accounts,
+            suffix='payees')
+    app.add_route('/api/accounts/{account_id}/payments/{scheme}', accounts,
+            suffix='payments')
+    app.add_route('/api/db/accounts/{account_id}/transactions', accounts,
+            suffix='cached_transactions')
+    app.add_route('/api/db/accounts/{account_id}/balances', accounts,
+            suffix='cached_balances')
+    port = os.getenv('PORT') or '8001'
+    httpd = simple_server.make_server('', int(port), app)
+    logger.info(f"Listening on port {port}, press ^C to stop.\n")
+    httpd.serve_forever()
+
+if __name__ == '__main__':
+    main()
+```
