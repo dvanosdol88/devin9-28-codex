@@ -103,6 +103,11 @@ class AccountsResource:
                 except Exception:
                     logger.error(f"Error storing balance snapshot for "
                                  f"account {account_id}", exc_info=True)
+                    raise falcon.HTTPInternalServerError(
+                        title="Database Storage Failed",
+                        description="Failed to store balance snapshot in "
+                                    "database."
+                    )
             return teller_response
         self._proxy(req, resp, store_balances)
 
@@ -131,6 +136,11 @@ class AccountsResource:
                 except Exception:
                     logger.error(f"Error storing transactions for "
                                  f"account {account_id}", exc_info=True)
+                    raise falcon.HTTPInternalServerError(
+                        title="Database Storage Failed",
+                        description="Failed to store transactions in "
+                                    "database."
+                    )
             return teller_response
         self._proxy(req, resp, store_transactions)
 
