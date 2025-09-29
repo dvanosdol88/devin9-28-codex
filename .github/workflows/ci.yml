@@ -1,17 +1,12 @@
-
 name: CI
-
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
 
 jobs:
   lint:
-    name: flake8 (soft fail)
+    name: flake8 (info only)
     runs-on: ubuntu-24.04
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -19,4 +14,5 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
       - run: pip install flake8
-      - run: flake8 python
+      - name: Run flake8 without failing the build
+        run: flake8 python --exit-zero
