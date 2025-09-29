@@ -178,6 +178,7 @@ async function handleRefresh() {
       const tellerConnect = TellerConnect.setup({
         applicationId: 'app_pj4c5t83p8q0ibrr8k000',
         environment: 'development',
+        products: ['balance', 'transactions'],
         selectAccount: 'multiple',
         onSuccess: async function(enrollment) {
           console.log('[app.js] TellerConnect enrollment success', enrollment);
@@ -211,7 +212,10 @@ async function handleRefresh() {
         },
         onFailure: function(error) {
           console.error('[app.js] TellerConnect enrollment failed', error);
-          alert('Authentication failed. Please try again.');
+          alert('Authentication failed: ' + (error.message || 'Please try again.'));
+        },
+        onExit: function() {
+          console.log('[app.js] User closed TellerConnect without completing enrollment');
         }
       });
       
