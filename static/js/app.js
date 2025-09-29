@@ -45,6 +45,11 @@ class Api {
     if (!r.ok) throw new Error(`balances ${r.status}`);
     return r.json();
   }
+  static async getLiveBalances(accountId) {
+    const r = await fetch(`${API_BASE}/accounts/${accountId}/balances`, { headers: { ...authHeaders() } });
+    if (!r.ok) throw new Error(`getLiveBalances ${r.status}`);
+    return r.json();
+  }
   static async listDbTransactions(accountId, limit = TX_LIMIT) {
     const r = await fetch(`${DB_API}/accounts/${accountId}/transactions?limit=${limit}`, { headers: { ...authHeaders() } });
     if (!r.ok) throw new Error(`transactions ${r.status}`);
@@ -65,6 +70,50 @@ async function resolveAccountIds() {
     checking,
     savings
   };
+}
+
+async function fetchFreshBalances(ids) {
+  const promises = [];
+  if (ids.checkingId) {
+    promises.push(
+      Api.getLiveBalances(ids.checkingId).catch(e => {
+        console.error('[app.js] failed to fetch checking balance', e);
+      })
+    );
+  }
+  if (ids.savingsId) {
+    promises.push(
+      Api.getLiveBalances(ids.savingsId).catch(e => {
+        console.error('[app.js] failed to fetch savings balance', e);
+      })
+    );
+  }
+  await Promise.all(promises);
+}
+
+function getPersistedAccountIds() {
+  try {
+    const raw = localStorage.getItem('accountIds');
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (_) {
+    return null;
+  }
+}
+
+function persistAccountIds(ids) {
+  try {
+    const existing = getPersistedAccountIds() || {};
+    const merged = {
+      checkingId: ids.checkingId || existing.checkingId || null,
+      savingsId: ids.savingsId || existing.savingsId || null
+    };
+    localStorage.setItem('accountIds', JSON.stringify(merged));
+    return merged;
+  } catch (e) {
+    console.error('[app.js] failed to persist account IDs', e);
+    return ids;
+  }
 }
 
 async function hydrateBalances(ids) {
@@ -194,20 +243,26 @@ async function handleRefresh() {
           
           const ids = await resolveAccountIds();
           console.log('[app.js] resolved ids after enrollment', ids);
-          window.__llcIds = ids;
           
-          await hydrateBalances(ids);
+          const mergedIds = persistAccountIds(ids);
+          console.log('[app.js] persisted and merged account IDs', mergedIds);
+          window.__llcIds = mergedIds;
+          
+          await fetchFreshBalances(mergedIds);
+          console.log('[app.js] fetched fresh balances from Teller API');
+          
+          await hydrateBalances(mergedIds);
           console.log('[app.js] hydrated balances after enrollment');
           
           const checkingCard = document.querySelector(ACCOUNTS_PAGE.checking.card);
           const savingsCard = document.querySelector(ACCOUNTS_PAGE.savings.card);
-          if (checkingCard && ids.checkingId) {
+          if (checkingCard && mergedIds.checkingId) {
             checkingCard.replaceWith(checkingCard.cloneNode(true));
-            document.querySelector(ACCOUNTS_PAGE.checking.card).addEventListener('click', () => onCardClick('checking', ids));
+            document.querySelector(ACCOUNTS_PAGE.checking.card).addEventListener('click', () => onCardClick('checking', mergedIds));
           }
-          if (savingsCard && ids.savingsId) {
+          if (savingsCard && mergedIds.savingsId) {
             savingsCard.replaceWith(savingsCard.cloneNode(true));
-            document.querySelector(ACCOUNTS_PAGE.savings.card).addEventListener('click', () => onCardClick('savings', ids));
+            document.querySelector(ACCOUNTS_PAGE.savings.card).addEventListener('click', () => onCardClick('savings', mergedIds));
           }
         },
         onFailure: function(error) {
@@ -268,20 +323,26 @@ async function handleRefresh() {
         
         const ids = await resolveAccountIds();
         console.log('[app.js] resolved ids after simulated enrollment', ids);
-        window.__llcIds = ids;
         
-        await hydrateBalances(ids);
+        const mergedIds = persistAccountIds(ids);
+        console.log('[app.js] persisted and merged account IDs', mergedIds);
+        window.__llcIds = mergedIds;
+        
+        await fetchFreshBalances(mergedIds);
+        console.log('[app.js] fetched fresh balances from Teller API (simulated)');
+        
+        await hydrateBalances(mergedIds);
         console.log('[app.js] hydrated balances after simulated enrollment');
         
         const checkingCard = document.querySelector(ACCOUNTS_PAGE.checking.card);
         const savingsCard = document.querySelector(ACCOUNTS_PAGE.savings.card);
-        if (checkingCard && ids.checkingId) {
+        if (checkingCard && mergedIds.checkingId) {
           checkingCard.replaceWith(checkingCard.cloneNode(true));
-          document.querySelector(ACCOUNTS_PAGE.checking.card).addEventListener('click', () => onCardClick('checking', ids));
+          document.querySelector(ACCOUNTS_PAGE.checking.card).addEventListener('click', () => onCardClick('checking', mergedIds));
         }
-        if (savingsCard && ids.savingsId) {
+        if (savingsCard && mergedIds.savingsId) {
           savingsCard.replaceWith(savingsCard.cloneNode(true));
-          document.querySelector(ACCOUNTS_PAGE.savings.card).addEventListener('click', () => onCardClick('savings', ids));
+          document.querySelector(ACCOUNTS_PAGE.savings.card).addEventListener('click', () => onCardClick('savings', mergedIds));
         }
         
         alert('Simulated authentication completed! In production, this would be the real Teller Connect flow.');
@@ -310,14 +371,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   let ids = { checkingId: DEFAULT_CHECKING_ID, savingsId: null };
   try {
-    const enrollment = JSON.parse(localStorage.getItem('teller:enrollment') || 'null');
-    if (enrollment && enrollment.accessToken) {
-      const resolvedIds = await resolveAccountIds();
-      ids = resolvedIds;
-      console.log('[app.js] resolved ids from enrollment', ids);
+    const persistedIds = getPersistedAccountIds();
+    if (persistedIds && (persistedIds.checkingId || persistedIds.savingsId)) {
+      ids = persistedIds;
+      console.log('[app.js] loaded persisted account IDs', ids);
+    } else {
+      const enrollment = JSON.parse(localStorage.getItem('teller:enrollment') || 'null');
+      if (enrollment && enrollment.accessToken) {
+        const resolvedIds = await resolveAccountIds();
+        ids = resolvedIds;
+        console.log('[app.js] resolved ids from enrollment', ids);
+      }
     }
   } catch (e) {
-    console.log('[app.js] using default ids, enrollment not available', e.message);
+    console.log('[app.js] using default ids, could not load persisted IDs', e.message);
   }
   window.__llcIds = ids;
   
