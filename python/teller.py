@@ -186,7 +186,13 @@ class AccountsResource:
                            .filter_by(account_id=account_id)
                            .order_by(BalanceSnapshot.as_of.desc())
                            .first())
-                resp.media = latest.raw if latest else {}
+                if latest:
+                    resp.media = {
+                        'available': str(latest.available),
+                        'ledger': str(latest.ledger)
+                    }
+                else:
+                    resp.media = {}
         except Exception:
             logger.error(f"Error retrieving cached balances for "
                          f"account {account_id}", exc_info=True)

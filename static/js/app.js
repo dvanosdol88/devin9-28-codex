@@ -29,9 +29,9 @@ function requireTokenOrBanner() {
   if (getAccessToken()) return true;
   const banner = document.createElement('div');
   banner.className = 'max-w-7xl mx-auto mt-6 px-4';
-  banner.innerHTML = '<div class="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded">Connect a bank on the main demo first so we can read your accounts. No access token found in this browser. Open the demo at <a class="underline" href="/index.html">/index.html</a> and complete Connect, then return here.</div>';
+  banner.innerHTML = '<div class="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded">No access token found. Click the "Refresh Data" button below to authenticate and load your account data.</div>';
   document.body.prepend(banner);
-  return false;
+  return true;
 }
 
 class Api {
@@ -169,30 +169,126 @@ async function handleRefresh() {
   
   if (refreshBtn) {
     refreshBtn.disabled = true;
-    refreshBtn.textContent = '🔄 Refreshing...';
+    refreshBtn.textContent = '🔄 Connecting...';
   }
   
   try {
-    const ids = await resolveAccountIds();
-    console.log('[app.js] resolved ids on refresh', ids);
-    window.__llcIds = ids;
-    
-    await hydrateBalances(ids);
-    console.log('[app.js] hydrated balances on refresh');
-    
-    const checkingCard = document.querySelector(ACCOUNTS_PAGE.checking.card);
-    const savingsCard = document.querySelector(ACCOUNTS_PAGE.savings.card);
-    if (checkingCard && ids.checkingId) {
-      checkingCard.replaceWith(checkingCard.cloneNode(true));
-      document.querySelector(ACCOUNTS_PAGE.checking.card).addEventListener('click', () => onCardClick('checking', ids));
+    if (typeof TellerConnect !== 'undefined') {
+      console.log('[app.js] TellerConnect SDK available, starting real authentication flow');
+      const tellerConnect = TellerConnect.setup({
+        applicationId: 'app_pj4c5t83p8q0ibrr8k000',
+        environment: 'development',
+        selectAccount: 'multiple',
+        onSuccess: async function(enrollment) {
+          console.log('[app.js] TellerConnect enrollment success', enrollment);
+          
+          if (typeof TellerStore !== 'undefined') {
+            const store = new TellerStore();
+            store.putEnrollment(enrollment);
+            store.putUser(enrollment.user);
+          } else {
+            localStorage.setItem('teller:enrollment', JSON.stringify(enrollment));
+            localStorage.setItem('teller:user', JSON.stringify(enrollment.user));
+          }
+          
+          const ids = await resolveAccountIds();
+          console.log('[app.js] resolved ids after enrollment', ids);
+          window.__llcIds = ids;
+          
+          await hydrateBalances(ids);
+          console.log('[app.js] hydrated balances after enrollment');
+          
+          const checkingCard = document.querySelector(ACCOUNTS_PAGE.checking.card);
+          const savingsCard = document.querySelector(ACCOUNTS_PAGE.savings.card);
+          if (checkingCard && ids.checkingId) {
+            checkingCard.replaceWith(checkingCard.cloneNode(true));
+            document.querySelector(ACCOUNTS_PAGE.checking.card).addEventListener('click', () => onCardClick('checking', ids));
+          }
+          if (savingsCard && ids.savingsId) {
+            savingsCard.replaceWith(savingsCard.cloneNode(true));
+            document.querySelector(ACCOUNTS_PAGE.savings.card).addEventListener('click', () => onCardClick('savings', ids));
+          }
+        },
+        onFailure: function(error) {
+          console.error('[app.js] TellerConnect enrollment failed', error);
+          alert('Authentication failed. Please try again.');
+        }
+      });
+      
+      tellerConnect.open();
+    } else {
+      console.log('[app.js] TellerConnect SDK not available, simulating authentication flow for development');
+      
+      const userConfirmed = confirm(
+        'TellerConnect Authentication Flow\n\n' +
+        'In production, this would open the Teller Connect authentication window where you would:\n' +
+        '1. Select your bank\n' +
+        '2. Enter your banking credentials\n' +
+        '3. Choose which accounts to connect\n' +
+        '4. Complete the secure authentication process\n\n' +
+        'For development purposes, would you like to simulate a successful authentication?'
+      );
+      
+      if (userConfirmed) {
+        console.log('[app.js] Simulating successful TellerConnect enrollment');
+        
+        const mockEnrollment = {
+          accessToken: 'test_token_' + Date.now(),
+          user: {
+            id: 'test_user_' + Date.now()
+          },
+          accounts: [
+            {
+              id: 'acc_checking_' + Date.now(),
+              name: 'LLC Checking',
+              type: 'depository',
+              subtype: 'checking'
+            },
+            {
+              id: 'acc_savings_' + Date.now(),
+              name: 'LLC Savings',
+              type: 'depository',
+              subtype: 'savings'
+            }
+          ]
+        };
+        
+        if (typeof TellerStore !== 'undefined') {
+          const store = new TellerStore();
+          store.putEnrollment(mockEnrollment);
+          store.putUser(mockEnrollment.user);
+        } else {
+          localStorage.setItem('teller:enrollment', JSON.stringify(mockEnrollment));
+          localStorage.setItem('teller:user', JSON.stringify(mockEnrollment.user));
+        }
+        
+        const ids = await resolveAccountIds();
+        console.log('[app.js] resolved ids after simulated enrollment', ids);
+        window.__llcIds = ids;
+        
+        await hydrateBalances(ids);
+        console.log('[app.js] hydrated balances after simulated enrollment');
+        
+        const checkingCard = document.querySelector(ACCOUNTS_PAGE.checking.card);
+        const savingsCard = document.querySelector(ACCOUNTS_PAGE.savings.card);
+        if (checkingCard && ids.checkingId) {
+          checkingCard.replaceWith(checkingCard.cloneNode(true));
+          document.querySelector(ACCOUNTS_PAGE.checking.card).addEventListener('click', () => onCardClick('checking', ids));
+        }
+        if (savingsCard && ids.savingsId) {
+          savingsCard.replaceWith(savingsCard.cloneNode(true));
+          document.querySelector(ACCOUNTS_PAGE.savings.card).addEventListener('click', () => onCardClick('savings', ids));
+        }
+        
+        alert('Simulated authentication completed! In production, this would be the real Teller Connect flow.');
+      } else {
+        console.log('[app.js] User cancelled simulated authentication');
+      }
     }
-    if (savingsCard && ids.savingsId) {
-      savingsCard.replaceWith(savingsCard.cloneNode(true));
-      document.querySelector(ACCOUNTS_PAGE.savings.card).addEventListener('click', () => onCardClick('savings', ids));
-    }
+    
   } catch (e) {
     console.log('[app.js] refresh failed', e && e.message);
-    alert('Failed to refresh data. Please check your connection and try again.');
+    alert('Failed to start authentication. Please check your connection and try again.');
   } finally {
     if (refreshBtn) {
       refreshBtn.disabled = false;
@@ -209,6 +305,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   
   let ids = { checkingId: DEFAULT_CHECKING_ID, savingsId: null };
+  try {
+    const enrollment = JSON.parse(localStorage.getItem('teller:enrollment') || 'null');
+    if (enrollment && enrollment.accessToken) {
+      const resolvedIds = await resolveAccountIds();
+      ids = resolvedIds;
+      console.log('[app.js] resolved ids from enrollment', ids);
+    }
+  } catch (e) {
+    console.log('[app.js] using default ids, enrollment not available', e.message);
+  }
   window.__llcIds = ids;
   
   try {
