@@ -1,0 +1,26 @@
+# Git history
+.git/
+
+# Python virtual environment
+.venv/
+
+# Python caches
+__pycache__/
+*.pyc
+
+# Local databases
+*.db
+
+# TLS certificates and private keys
+*.pem
+private_key.pem
+
+# OS-specific files
+.DS_Store
+
+# IDE configuration files
+.vscode/
+.idea/
+
+# Old/backup files
+index_original_working.html

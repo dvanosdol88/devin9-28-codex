@@ -163,31 +163,70 @@ async function onCardClick(kind, ids) {
   }
 }
 
+async function handleRefresh() {
+  console.log('[app.js] refresh button clicked');
+  const refreshBtn = document.getElementById('refresh-data-btn');
+  
+  if (refreshBtn) {
+    refreshBtn.disabled = true;
+    refreshBtn.textContent = '🔄 Refreshing...';
+  }
+  
+  try {
+    const ids = await resolveAccountIds();
+    console.log('[app.js] resolved ids on refresh', ids);
+    window.__llcIds = ids;
+    
+    await hydrateBalances(ids);
+    console.log('[app.js] hydrated balances on refresh');
+    
+    const checkingCard = document.querySelector(ACCOUNTS_PAGE.checking.card);
+    const savingsCard = document.querySelector(ACCOUNTS_PAGE.savings.card);
+    if (checkingCard && ids.checkingId) {
+      checkingCard.replaceWith(checkingCard.cloneNode(true));
+      document.querySelector(ACCOUNTS_PAGE.checking.card).addEventListener('click', () => onCardClick('checking', ids));
+    }
+    if (savingsCard && ids.savingsId) {
+      savingsCard.replaceWith(savingsCard.cloneNode(true));
+      document.querySelector(ACCOUNTS_PAGE.savings.card).addEventListener('click', () => onCardClick('savings', ids));
+    }
+  } catch (e) {
+    console.log('[app.js] refresh failed', e && e.message);
+    alert('Failed to refresh data. Please check your connection and try again.');
+  } finally {
+    if (refreshBtn) {
+      refreshBtn.disabled = false;
+      refreshBtn.textContent = '🔄 Refresh Data';
+    }
+  }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('[app.js] DOMContentLoaded');
   if (!requireTokenOrBanner()) {
     console.log('[app.js] missing token');
     return;
   }
-  let ids = null;
-  try {
-    ids = await resolveAccountIds();
-    console.log('[app.js] resolved ids', ids);
-  } catch (e) {
-    console.log('[app.js] resolve failed, using default', e && e.message);
-    ids = { checkingId: DEFAULT_CHECKING_ID, savingsId: null };
-  }
+  
+  let ids = { checkingId: DEFAULT_CHECKING_ID, savingsId: null };
   window.__llcIds = ids;
+  
   try {
     await hydrateBalances(ids);
-    console.log('[app.js] hydrated balances');
+    console.log('[app.js] hydrated cached balances');
   } catch (e) {
-    console.log('[app.js] hydrate failed', e && e.message);
+    console.log('[app.js] hydrate cached failed', e && e.message);
   }
+  
   const checkingCard = document.querySelector(ACCOUNTS_PAGE.checking.card);
   const savingsCard = document.querySelector(ACCOUNTS_PAGE.savings.card);
   if (checkingCard && ids.checkingId) checkingCard.addEventListener('click', () => onCardClick('checking', ids));
   if (savingsCard && ids.savingsId) savingsCard.addEventListener('click', () => onCardClick('savings', ids));
+  
+  const refreshBtn = document.getElementById('refresh-data-btn');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', handleRefresh);
+  }
 });
 
 document.addEventListener('click', (e) => {
