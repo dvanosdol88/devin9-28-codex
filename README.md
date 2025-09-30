@@ -293,3 +293,13 @@ Troubleshooting:
 ## Documentation
 
 For more information about Teller's API, visit the [official documentation](https://teller.io/docs).
+
+## Tests
+
+Run the unit tests with pytest:
+
+```
+python3 -m venv .venv && . .venv/bin/activate
+pip install -r python/requirements.txt
+pytest
+```

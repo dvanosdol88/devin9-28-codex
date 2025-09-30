@@ -7,3 +7,4 @@ urllib3==1.26.6
 SQLAlchemy>=2
 psycopg2-binary
 flake8
+pytest>=8.2
