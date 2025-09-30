@@ -1,3 +1,12 @@
+## Docker image CI (build-only)
+
+A lightweight CI job builds the API Docker image to detect Dockerfile regressions. It does not push images.
+
+- Triggered in GitHub Actions alongside existing tests.
+- Uses docker/setup-buildx-action and docker/build-push-action with push=false.
+- No impact on Render deployment or production config.
+
+
 # Teller Storage Application
 
 ## Introduction
