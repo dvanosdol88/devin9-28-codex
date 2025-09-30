@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: devin-teller-api
+    runtime: python
+    region: oregon
+    plan: starter
+    branch: main
+    buildCommand: pip install -r python/requirements.txt
+    startCommand: cd python && alembic upgrade head && python teller.py --environment sandbox
+    envVars:
+      - key: DATABASE_URL
+        value: postgresql://teller_storage_user:QoDzFbBsaAeboP4cgZW75KXQTqGEt7W0@dpg-d3drlsadbo4c73dppq70-a.oregon-postgres.render.com/teller_storage?sslmode=require
+      - key: PORT
+        value: 10000
+      - key: LOG_LEVEL
+        value: INFO
+      - key: ENVIRONMENT
+        value: sandbox
+    healthCheckPath: /health
+
+databases:
+  - name: devin_teller_llc_finance
+    databaseName: teller_storage
+    user: teller_storage_user
+    region: oregon
+    plan: basic_256mb
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: everywhere
