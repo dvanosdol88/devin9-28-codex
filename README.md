@@ -1,13 +1,6 @@
-## ⚠️ IMPORTANT: Step 3 (Render PostgreSQL) Pending
+## ✅ Production-Ready with Render PostgreSQL
 
-**Step 3 of the hardening roadmap (Render PostgreSQL provisioning and smoke testing) has been skipped pending the Render PostgreSQL DATABASE_URL.**
-
-To complete Step 3, you need to:
-1. Provision a Render PostgreSQL database
-2. Obtain the DATABASE_URL with `?sslmode=require` appended
-3. Run smoke tests against the Render database to verify connectivity and Alembic migrations
-
-Until Step 3 is completed, the application can be tested locally using either SQLite or Docker-based PostgreSQL.
+This application is configured for deployment on Render with PostgreSQL database integration. See [`docs/postgres.md`](docs/postgres.md) for comprehensive setup documentation and [`render.yaml`](render.yaml) for infrastructure configuration.
 
 ---
 
@@ -57,8 +50,8 @@ This repository contains a full-stack Teller Connect integration with persistent
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/dvanosdol88/devin_teller_storage.git
-cd devin_teller_storage
+git clone https://github.com/dvanosdol88/devin9-28-codex.git
+cd devin9-28-codex
 ```
 
 2. Set up Python virtual environment and install dependencies:
@@ -94,30 +87,27 @@ python teller.py --environment sandbox
 
 4. Visit [localhost:8000](http://localhost:8000) to use the application.
 
-### Production (PostgreSQL)
+### Production (Render PostgreSQL)
 
-1. Set up PostgreSQL database:
-```bash
-sudo -u postgres createdb teller_storage
-sudo -u postgres createuser teller_user
-sudo -u postgres psql -c "ALTER USER teller_user WITH PASSWORD 'your_password';"
-sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE teller_storage TO teller_user;"
-```
+This application is configured for deployment on Render with PostgreSQL. See [`docs/postgres.md`](docs/postgres.md) for comprehensive setup instructions.
 
-2. Obtain TLS certificates from [Teller Developer Dashboard](https://teller.io/settings/certificates) and place them in the `python/` directory as `cert.pem` and `private_key.pem`
+**Quick Start:**
 
-3. Start with PostgreSQL configuration:
+1. Deploy using `render.yaml`:
+   - Push your changes to GitHub
+   - Connect your repository in Render Dashboard
+   - Render will automatically detect `render.yaml` and provision the database and web service
+
+2. For manual deployment or local production testing:
 ```bash
 source .venv/bin/activate
-export DATABASE_URL="postgresql://teller_user:your_password@localhost/teller_storage"
+export DATABASE_URL="postgresql://user:password@host/teller_storage?sslmode=require"
 cd python
+alembic upgrade head
 python teller.py --environment production --cert cert.pem --cert-key private_key.pem
 ```
 
-Or use the provided script (update with your certificate paths):
-```bash
-./start_postgres_backend.sh
-```
+**Note**: Obtain TLS certificates from [Teller Developer Dashboard](https://teller.io/settings/certificates) for production (non-sandbox) environments.
 
 ## Docker Development Guide
 
@@ -526,9 +516,20 @@ alembic revision -m "Description"
 
 #### Production Deployment with Migrations
 
-When deploying to production (e.g., Render PostgreSQL):
+**Render Deployment (Recommended):**
 
-1. Set `DATABASE_URL` to your production database
+The application is configured for automatic deployment via `render.yaml`:
+- Database provisioning: Render PostgreSQL with SSL enabled
+- Automatic migrations: `alembic upgrade head` runs on each deployment
+- Environment variables: DATABASE_URL and other configs pre-configured
+
+For detailed setup instructions, see [`docs/postgres.md`](docs/postgres.md).
+
+**Manual Deployment:**
+
+When deploying to other platforms:
+
+1. Set `DATABASE_URL` to your production database (must include `?sslmode=require` for Render)
 2. Run migrations before starting the app:
    ```bash
    cd python
@@ -569,7 +570,7 @@ These steps verify that the app works end-to-end after changes.
 1) Backend: start API server (sandbox; no certs required)
 - Terminal A:
 ```
-cd ~/repos/devin_teller_storage/python
+cd ~/repos/devin9-28-codex/python
 python teller.py --environment sandbox
 ```
 - Expect: "Database initialized successfully" and "Listening on port 8001"
@@ -577,7 +578,7 @@ python teller.py --environment sandbox
 2) Frontend: start static server
 - Terminal B:
 ```
-cd ~/repos/devin_teller_storage
+cd ~/repos/devin9-28-codex
 ./static.sh
 ```
 - Visit: http://localhost:8000
@@ -615,20 +616,41 @@ curl -s http://localhost:8001/health | jq .
 
 ## Deployment
 
-For production deployment:
-1. Set up PostgreSQL database
-2. Configure `DATABASE_URL` environment variable
-3. Deploy backend with `python teller.py --environment production`
-4. Serve static files via web server (nginx, Apache, etc.)
+### Render Deployment (Recommended)
 
-Troubleshooting:
-- Ensure Python 3 is installed and requirements in python/requirements.txt are installed if needed
-- Check DATABASE_URL if using Postgres; otherwise defaults to sqlite:///devin_teller.db
-- For non-sandbox environments, pass --cert and --cert-key to backend
+This application is pre-configured for Render deployment via `render.yaml`:
+
+1. **Push to GitHub**: Commit and push your changes to the `main` branch
+2. **Connect Repository**: In Render Dashboard, connect your GitHub repository
+3. **Auto-Deploy**: Render will automatically:
+   - Detect `render.yaml` configuration
+   - Provision PostgreSQL database
+   - Run Alembic migrations (`alembic upgrade head`)
+   - Start the web service
+
+For detailed instructions, see [`docs/postgres.md`](docs/postgres.md).
+
+### Manual Deployment
+
+For other platforms:
+
+1. Set up PostgreSQL database
+2. Configure `DATABASE_URL` environment variable (include `?sslmode=require` for SSL)
+3. Run migrations: `cd python && alembic upgrade head`
+4. Deploy backend with `python teller.py --environment production`
+5. Serve static files via web server (nginx, Apache, etc.)
+
+**Troubleshooting:**
+- Ensure Python 3.8+ is installed with requirements from `python/requirements.txt`
+- Check DATABASE_URL format; defaults to `sqlite:///devin_teller.db` if not set
+- For non-sandbox environments, pass `--cert` and `--cert-key` to backend
+- Always run migrations before starting the application: `alembic upgrade head`
 
 ## Documentation
 
-For more information about Teller's API, visit the [official documentation](https://teller.io/docs).
+- **PostgreSQL Setup**: See [`docs/postgres.md`](docs/postgres.md) for comprehensive database configuration, Alembic migrations, and troubleshooting
+- **Render Deployment**: See [`render.yaml`](render.yaml) for infrastructure-as-code configuration
+- **Teller API**: Visit the [official Teller documentation](https://teller.io/docs) for API details
 
 ## Tests
 
