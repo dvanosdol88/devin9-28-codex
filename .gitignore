@@ -24,3 +24,7 @@ python/private_key.pem
 # Node/npm (if ever used)
 node_modules/
 
+# Pytest artifacts
+.pytest_cache/
+.coverage
+htmlcov/
