@@ -9,5 +9,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r python/requirements.txt
-      - run: pytest
-
+      - name: Lint (flake8)
+        run: flake8 python
+      - name: Tests (pytest)
+        run: pytest -q
