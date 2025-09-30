@@ -18,6 +18,18 @@ services:
         value: sandbox
     healthCheckPath: /health
 
+  - type: static
+    name: devin-teller-frontend
+    region: oregon
+    plan: starter
+    branch: main
+    buildCommand: echo "No build step required for static site"
+    staticPublishPath: ./static
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
 databases:
   - name: devin_teller_llc_finance
     databaseName: teller_storage

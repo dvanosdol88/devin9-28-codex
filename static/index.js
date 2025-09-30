@@ -1,6 +1,15 @@
 const APPLICATION_ID = 'app_pj4c5t83p8q0ibrr8k000'
 const ENVIRONMENT = 'development';
-const BASE_URL = 'http://localhost:8001/api';
+
+function getBaseURL() {
+  const hostname = window.location.hostname;
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return 'http://localhost:8001/api';
+  }
+  return 'https://devin-teller-api.onrender.com/api';
+}
+
+const BASE_URL = getBaseURL();
 
 class TellerStore {
   constructor() {
