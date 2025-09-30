@@ -97,6 +97,46 @@ Or use the provided script (update with your certificate paths):
 ./start_postgres_backend.sh
 ```
 
+## Run PostgreSQL via Docker (Dev)
+
+1) Copy environment file and set a non-default password:
+```
+cp .env.example .env
+```
+
+2) Start Postgres (Compose auto-loads .env):
+```
+docker compose up -d db
+```
+
+3) Export DATABASE_URL for the host-run backend:
+```
+export $(grep -v '^\s*#' .env | xargs)
+export DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}/${POSTGRES_DB}"
+```
+
+4) Start the backend natively (sandbox; no certs required):
+```
+cd python
+python teller.py --environment sandbox
+```
+
+5) Health check:
+```
+curl -s http://localhost:8001/health
+```
+
+6) Verify DB tables without local psql:
+```
+docker exec -it teller-postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c '\dt'
+```
+
+Notes:
+- Use postgres:16.4-alpine image (pinned) in docker-compose.yml.
+- For production on Render (managed PostgreSQL), ensure TLS:
+  - Append `?sslmode=require` to the DATABASE_URL if not provided by the platform.
+- Keep POSTGRES_HOST=localhost for host-run backend. If you later containerize the backend, switch host to `db`.
+
 ## Testing
 
 ### PostgreSQL Migration Test

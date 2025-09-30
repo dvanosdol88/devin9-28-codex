@@ -1,6 +1,16 @@
 #!/bin/bash
+set -euo pipefail
 
-export DATABASE_URL="postgresql://teller_user:teller_password@localhost/teller_storage"
+if [ -f .env ]; then
+  export $(grep -v '^\s*#' .env | xargs)
+fi
+
+: "${POSTGRES_USER:=teller_user}"
+: "${POSTGRES_PASSWORD:=change_me}"
+: "${POSTGRES_DB:=teller_storage}"
+: "${POSTGRES_HOST:=localhost}"
+
+export DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}/${POSTGRES_DB}"
 
 echo "Starting backend server with PostgreSQL..."
 echo "DATABASE_URL: $DATABASE_URL"
