@@ -255,6 +255,86 @@ Notes:
 ### Database Initialization
 The backend automatically creates all required tables on startup via `init_db()`. No manual schema setup required.
 
+### Database Migrations with Alembic
+
+This project uses [Alembic](https://alembic.sqlalchemy.org/) for database schema migrations. Alembic tracks database schema changes over time, making it safe to evolve your database structure across environments.
+
+#### Initial Setup
+Alembic is already configured in `python/alembic/` with the baseline schema migration. The configuration:
+- Reads `DATABASE_URL` from environment (falls back to `sqlite:///devin_teller.db`)
+- Imports models from `python/db.py` (Account, BalanceSnapshot, Transaction)
+- Migration files are stored in `python/alembic/versions/`
+
+#### Common Alembic Commands
+
+Run these commands from the `python/` directory:
+
+```bash
+cd python
+
+# View current migration version
+alembic current
+
+# View migration history
+alembic history --verbose
+
+# Upgrade to latest version
+alembic upgrade head
+
+# Upgrade to specific version
+alembic upgrade <revision_id>
+
+# Downgrade one version
+alembic downgrade -1
+
+# Downgrade to specific version
+alembic downgrade <revision_id>
+
+# Generate new migration after model changes
+alembic revision --autogenerate -m "Description of changes"
+
+# Create empty migration (for data migrations)
+alembic revision -m "Description"
+```
+
+#### Workflow for Schema Changes
+
+1. **Modify SQLAlchemy models** in `python/db.py`
+2. **Generate migration**:
+   ```bash
+   cd python
+   alembic revision --autogenerate -m "Add new column to Account"
+   ```
+3. **Review generated migration** in `python/alembic/versions/`
+4. **Test migration**:
+   ```bash
+   alembic upgrade head
+   ```
+5. **Verify tests still pass**:
+   ```bash
+   cd ..
+   pytest -q
+   ```
+6. **Commit migration file** with your changes
+
+#### Production Deployment with Migrations
+
+When deploying to production (e.g., Render PostgreSQL):
+
+1. Set `DATABASE_URL` to your production database
+2. Run migrations before starting the app:
+   ```bash
+   cd python
+   alembic upgrade head
+   python teller.py --environment production --cert cert.pem --cert-key private_key.pem
+   ```
+
+#### Troubleshooting
+
+- **"table already exists" error**: Your database might already have tables created by `init_db()`. For a fresh start, drop all tables or use a new database, then run `alembic upgrade head`.
+- **Migration conflicts**: If working in a team, coordinate migrations to avoid conflicts. Always pull latest changes before creating new migrations.
+- **Schema drift**: Use `alembic check` (requires Alembic 1.13+) to detect differences between models and database.
+
 ### Environment Variables
 - `DATABASE_URL`: PostgreSQL connection string (optional, defaults to SQLite)
 - `TELLER_APPLICATION_ID`: Your Teller application ID
