@@ -1,3 +1,16 @@
+## ⚠️ IMPORTANT: Step 3 (Render PostgreSQL) Pending
+
+**Step 3 of the hardening roadmap (Render PostgreSQL provisioning and smoke testing) has been skipped pending the Render PostgreSQL DATABASE_URL.**
+
+To complete Step 3, you need to:
+1. Provision a Render PostgreSQL database
+2. Obtain the DATABASE_URL with `?sslmode=require` appended
+3. Run smoke tests against the Render database to verify connectivity and Alembic migrations
+
+Until Step 3 is completed, the application can be tested locally using either SQLite or Docker-based PostgreSQL.
+
+---
+
 ## Docker image CI (build-only)
 
 A lightweight CI job builds the API Docker image to detect Dockerfile regressions. It does not push images.
@@ -106,45 +119,239 @@ Or use the provided script (update with your certificate paths):
 ./start_postgres_backend.sh
 ```
 
-## Run PostgreSQL via Docker (Dev)
+## Docker Development Guide
 
-1) Copy environment file and set a non-default password:
-```
+This project provides two Docker Compose configurations for different development workflows:
+
+### Option 1: Database Only (`docker-compose.yml`)
+
+Use this when you want to run PostgreSQL in Docker but run the backend/frontend natively on your host machine. This is useful for faster development iterations and debugging.
+
+**Setup:**
+
+1) Copy environment file and configure credentials:
+```bash
 cp .env.example .env
+# Edit .env to set secure POSTGRES_PASSWORD
 ```
 
-2) Start Postgres (Compose auto-loads .env):
-```
+2) Start PostgreSQL container:
+```bash
 docker compose up -d db
 ```
 
-3) Export DATABASE_URL for the host-run backend:
-```
+3) Export DATABASE_URL for host-run backend:
+```bash
 export $(grep -v '^\s*#' .env | xargs)
-export DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}/${POSTGRES_DB}"
+export DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:${POSTGRES_PORT:-5432}/${POSTGRES_DB}"
 ```
 
-4) Start the backend natively (sandbox; no certs required):
+4) Run Alembic migrations:
+```bash
+cd python
+alembic upgrade head
+cd ..
 ```
+
+5) Start backend natively (sandbox; no certs required):
+```bash
 cd python
 python teller.py --environment sandbox
 ```
 
-5) Health check:
-```
-curl -s http://localhost:8001/health
+6) Start frontend in another terminal:
+```bash
+./static.sh
 ```
 
-6) Verify DB tables without local psql:
-```
+**Verification:**
+```bash
+# Health check
+curl -s http://localhost:8001/health
+
+# Verify DB tables without local psql
 docker exec -it teller-postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c '\dt'
 ```
 
-Notes:
-- Use postgres:16.4-alpine image (pinned) in docker-compose.yml.
-- For production on Render (managed PostgreSQL), ensure TLS:
-  - Append `?sslmode=require` to the DATABASE_URL if not provided by the platform.
-- Keep POSTGRES_HOST=localhost for host-run backend. If you later containerize the backend, switch host to `db`.
+### Option 2: Full Stack (`docker-compose.dev.yml`)
+
+Use this for running the entire application stack (database + API + tests) in containers. This is useful for CI/CD, testing, or ensuring environment consistency.
+
+**Features:**
+- PostgreSQL 16.4-alpine with health checks
+- API service with automatic database connection
+- Tests service for running pytest in containers
+- All services use hardcoded dev credentials (dev/dev/devin)
+
+**Setup:**
+
+1) Build and start all services:
+```bash
+docker compose -f docker-compose.dev.yml up --build
+```
+
+2) Run tests only:
+```bash
+docker compose -f docker-compose.dev.yml up --build --exit-code-from tests tests
+```
+
+3) Run API only (with database):
+```bash
+docker compose -f docker-compose.dev.yml up --build db api
+```
+
+**Verification:**
+```bash
+# Health check (API must be running)
+curl -s http://localhost:8001/health
+
+# View logs
+docker compose -f docker-compose.dev.yml logs -f api
+docker compose -f docker-compose.dev.yml logs -f tests
+
+# Clean up
+docker compose -f docker-compose.dev.yml down -v
+```
+
+### Common Pitfalls & Solutions
+
+#### 1. **SSL/TLS Mode for Production PostgreSQL**
+- **Problem**: Production PostgreSQL (e.g., Render) requires SSL connections
+- **Solution**: Always append `?sslmode=require` to DATABASE_URL for production:
+  ```bash
+  export DATABASE_URL="postgresql://user:pass@host/db?sslmode=require"
+  ```
+- **Note**: Local Docker PostgreSQL doesn't require SSL
+
+#### 2. **Host vs Container Networking**
+- **Problem**: Backend can't connect to database with wrong hostname
+- **Solution**:
+  - **Host-run backend + Docker DB**: Use `localhost` or `127.0.0.1`
+  - **Containerized backend + Docker DB**: Use service name `db`
+  - The `docker-compose.dev.yml` correctly uses `db` for containerized backend
+
+#### 3. **Health Check Failures**
+- **Problem**: API service starts before database is ready
+- **Solution**: Both compose files include health checks with proper wait conditions:
+  ```yaml
+  depends_on:
+    db:
+      condition: service_healthy
+  ```
+- **Debugging**: Check health status with:
+  ```bash
+  docker compose ps
+  docker compose -f docker-compose.dev.yml ps
+  ```
+
+#### 4. **Environment Variable Loading**
+- **Problem**: Environment variables not loaded correctly
+- **Solutions**:
+  - `docker-compose.yml` auto-loads `.env` file
+  - For host-run backend: Use `export $(grep -v '^\s*#' .env | xargs)`
+  - Verify with: `echo $DATABASE_URL`
+
+#### 5. **Port Conflicts**
+- **Problem**: Port 5432 or 8001 already in use
+- **Solutions**:
+  - Change port in `.env`: `POSTGRES_PORT=5433`
+  - Stop conflicting service: `sudo systemctl stop postgresql`
+  - Find process using port: `lsof -i :5432`
+
+#### 6. **Stale Database State**
+- **Problem**: Old database state causing issues
+- **Solutions**:
+  ```bash
+  # For docker-compose.yml
+  docker compose down -v  # Removes volumes
+  docker compose up -d db
+  
+  # For docker-compose.dev.yml
+  docker compose -f docker-compose.dev.yml down -v
+  docker compose -f docker-compose.dev.yml up --build
+  ```
+
+#### 7. **Alembic "table already exists" Error**
+- **Problem**: Tables created by `init_db()` conflict with Alembic migrations
+- **Solution**: Drop all tables or use fresh database:
+  ```bash
+  # Docker method
+  docker compose down -v
+  docker compose up -d db
+  cd python
+  alembic upgrade head
+  ```
+
+### Troubleshooting
+
+#### Database Connection Issues
+
+1. **Check database is running:**
+```bash
+docker compose ps
+docker logs teller-postgres
+```
+
+2. **Test connection directly:**
+```bash
+docker exec -it teller-postgres psql -U dev -d devin -c 'SELECT version();'
+```
+
+3. **Verify DATABASE_URL format:**
+```bash
+echo $DATABASE_URL
+# Should be: postgresql://user:password@host:port/database
+# Production should end with: ?sslmode=require
+```
+
+#### API Not Starting
+
+1. **Check logs:**
+```bash
+docker compose -f docker-compose.dev.yml logs api
+```
+
+2. **Verify health check:**
+```bash
+docker compose -f docker-compose.dev.yml ps
+# db should show "healthy"
+```
+
+3. **Rebuild containers:**
+```bash
+docker compose -f docker-compose.dev.yml up --build --force-recreate
+```
+
+#### Test Failures
+
+1. **Run tests with verbose output:**
+```bash
+docker compose -f docker-compose.dev.yml run --rm tests pytest -v
+```
+
+2. **Check database state:**
+```bash
+docker exec -it teller-postgres psql -U dev -d devin -c '\dt'
+```
+
+3. **Clean and retry:**
+```bash
+docker compose -f docker-compose.dev.yml down -v
+docker compose -f docker-compose.dev.yml up --build --exit-code-from tests tests
+```
+
+### Docker Images & Versions
+
+- **PostgreSQL**: `postgres:16.4-alpine` (pinned for stability)
+- **Python**: `python:3.12-slim` (from Dockerfile)
+- All images are pinned to specific versions to prevent unexpected updates
+
+### Production Notes
+
+- For managed PostgreSQL (e.g., Render), ensure `?sslmode=require` in DATABASE_URL
+- Run Alembic migrations before starting the API: `alembic upgrade head`
+- Use TLS certificates for non-sandbox Teller environments
+- Consider connection pooling for high-traffic scenarios
 
 ## Testing
 
