@@ -228,7 +228,7 @@ class LLCAccountsResource:
     def on_get(self, req, resp):
         try:
             from db import (SessionLocal, LLCAccount, LLCFinancingTerms, 
-                           LLCFinancingBreakdown)
+                           LLCFinancingBreakdown, LLCTransaction)
             with SessionLocal() as s:
                 accounts = s.query(LLCAccount).all()
                 result = []
@@ -241,6 +241,16 @@ class LLCAccountsResource:
                         'account_type': acc.account_type,
                         'current_balance': str(acc.current_balance),
                     }
+                    
+                    if acc.transactions:
+                        acc_dict['transactions'] = [{
+                            'transaction_id': tx.transaction_id,
+                            'date': tx.txn_date.isoformat(),
+                            'description': tx.description,
+                            'debit': str(tx.debit),
+                            'credit': str(tx.credit)
+                        } for tx in acc.transactions]
+                    
                     if acc.financing_terms:
                         ft = acc.financing_terms
                         acc_dict['financing_terms'] = {
@@ -260,33 +270,74 @@ class LLCAccountsResource:
     def on_post(self, req, resp):
         try:
             from db import (SessionLocal, LLCAccount, LLCFinancingTerms, 
-                           LLCFinancingBreakdown)
+                           LLCFinancingBreakdown, LLCTransaction)
+            from datetime import datetime
             account_data = req.media
             with SessionLocal() as s:
-                new_account = LLCAccount(
-                    slug=account_data['slug'],
-                    name=account_data['name'],
-                    subtitle=account_data.get('subtitle', ''),
-                    account_type=account_data['account_type'],
-                    current_balance=Decimal(str(account_data.get('current_balance', 0.0)))
-                )
-                s.add(new_account)
+                existing = s.query(LLCAccount).filter(LLCAccount.slug == account_data['slug']).first()
+                if existing:
+                    new_account = existing
+                    new_account.name = account_data['name']
+                    new_account.subtitle = account_data.get('subtitle', '')
+                    new_account.account_type = account_data['account_type']
+                    new_account.current_balance = Decimal(str(account_data.get('current_balance', 0.0)))
+                else:
+                    new_account = LLCAccount(
+                        slug=account_data['slug'],
+                        name=account_data['name'],
+                        subtitle=account_data.get('subtitle', ''),
+                        account_type=account_data['account_type'],
+                        current_balance=Decimal(str(account_data.get('current_balance', 0.0)))
+                    )
+                    s.add(new_account)
                 s.commit()
                 s.refresh(new_account)
                 
+                if 'transactions' in account_data:
+                    s.query(LLCTransaction).filter(LLCTransaction.account_id == new_account.account_id).delete()
+                    
+                    balance = Decimal('0.0')
+                    for tx_data in account_data['transactions']:
+                        new_tx = LLCTransaction(
+                            account_id=new_account.account_id,
+                            txn_date=datetime.fromisoformat(tx_data['date']) if isinstance(tx_data['date'], str) else tx_data['date'],
+                            description=tx_data['description'],
+                            debit=Decimal(str(tx_data.get('debit', 0))),
+                            credit=Decimal(str(tx_data.get('credit', 0)))
+                        )
+                        s.add(new_tx)
+                        
+                        if new_account.account_type == 'asset':
+                            balance += (new_tx.debit - new_tx.credit)
+                        elif new_account.account_type == 'liability':
+                            balance += (new_tx.credit - new_tx.debit)
+                    
+                    new_account.current_balance = balance
+                
                 if 'financing_terms' in account_data:
                     ft_data = account_data['financing_terms']
-                    financing = LLCFinancingTerms(
-                        account_id=new_account.account_id,
-                        principal=Decimal(str(ft_data['principal'])),
-                        interest_rate=Decimal(str(ft_data['interest_rate'])),
-                        term_years=ft_data['term_years']
-                    )
-                    s.add(financing)
+                    
+                    if new_account.financing_terms:
+                        financing = new_account.financing_terms
+                        financing.principal = Decimal(str(ft_data['principal']))
+                        financing.interest_rate = Decimal(str(ft_data['interest_rate']))
+                        financing.term_years = ft_data['term_years']
+                    else:
+                        financing = LLCFinancingTerms(
+                            account_id=new_account.account_id,
+                            principal=Decimal(str(ft_data['principal'])),
+                            interest_rate=Decimal(str(ft_data['interest_rate'])),
+                            term_years=ft_data['term_years']
+                        )
+                        s.add(financing)
                     s.commit()
                     s.refresh(financing)
                     
                     if 'breakdown' in ft_data:
+                        s.query(LLCFinancingBreakdown).filter(
+                            LLCFinancingBreakdown.financing_id == financing.financing_id
+                        ).delete()
+                        
                         for label, amount in ft_data['breakdown'].items():
                             breakdown = LLCFinancingBreakdown(
                                 financing_id=financing.financing_id,
@@ -294,8 +345,8 @@ class LLCAccountsResource:
                                 amount=Decimal(str(amount))
                             )
                             s.add(breakdown)
-                    s.commit()
                 
+                s.commit()
                 resp.media = {'account_id': new_account.account_id, 'slug': new_account.slug}
         except Exception:
             logger.error("Error creating LLC account", exc_info=True)

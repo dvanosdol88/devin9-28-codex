@@ -1,6 +1,12 @@
 console.log('[app.js] loaded');
-const API_BASE = 'http://localhost:8001/api';
+
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const API_BASE = isLocalhost 
+  ? 'http://localhost:8001/api' 
+  : 'https://devin-teller-api.onrender.com/api';
 const DB_API = `${API_BASE}/db`;
+const LLC_API = `${API_BASE}/llc`;
+
 const ACCOUNTS_PAGE = {
   checking: { card: '#llc-bank', balanceEl: '#llc-bank-balance' },
   savings: { card: '#llc-savings', balanceEl: '#llc-savings-balance' }
@@ -54,6 +60,62 @@ class Api {
     const r = await fetch(`${DB_API}/accounts/${accountId}/transactions?limit=${limit}`, { headers: { ...authHeaders() } });
     if (!r.ok) throw new Error(`transactions ${r.status}`);
     return r.json();
+  }
+  
+  static async loadLLCAccounts() {
+    try {
+      const r = await fetch(`${LLC_API}/accounts`, { headers: { ...authHeaders() } });
+      if (!r.ok) throw new Error(`loadLLCAccounts ${r.status}`);
+      return r.json();
+    } catch (e) {
+      console.error('[Api.loadLLCAccounts] error:', e);
+      return [];
+    }
+  }
+  
+  static async saveLLCAccount(accountSlug, accountData) {
+    try {
+      const payload = { slug: accountSlug, ...accountData };
+      console.log('[Api.saveLLCAccount] Saving account:', accountSlug, JSON.stringify(payload, null, 2));
+      const r = await fetch(`${LLC_API}/accounts`, {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!r.ok) throw new Error(`saveLLCAccount ${r.status}`);
+      const result = await r.json();
+      console.log('[Api.saveLLCAccount] Backend response:', JSON.stringify(result, null, 2));
+      return result;
+    } catch (e) {
+      console.error('[Api.saveLLCAccount] error:', e);
+      throw e;
+    }
+  }
+  
+  static async loadRentData(monthStr) {
+    try {
+      const r = await fetch(`${LLC_API}/rent/${monthStr}`, { headers: { ...authHeaders() } });
+      if (!r.ok) throw new Error(`loadRentData ${r.status}`);
+      return r.json();
+    } catch (e) {
+      console.error('[Api.loadRentData] error:', e);
+      return null;
+    }
+  }
+  
+  static async saveRentData(monthStr, rentData) {
+    try {
+      const r = await fetch(`${LLC_API}/rent/${monthStr}`, {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(rentData)
+      });
+      if (!r.ok) throw new Error(`saveRentData ${r.status}`);
+      return r.json();
+    } catch (e) {
+      console.error('[Api.saveRentData] error:', e);
+      throw e;
+    }
   }
 }
 
@@ -362,7 +424,7 @@ async function handleRefresh() {
   }
 }
 
-const accountsData = {
+let accountsData = {
   juliePersonalFinances: {
     name: "Julie's Finances",
     subtitle: "Transactions related to the LLC.",
@@ -534,6 +596,71 @@ const callGemini = async (prompt, maxRetries = 3) => {
 function formatCurrency(amount) {
   if (amount === null || isNaN(amount)) return '';
   return Number(amount).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+}
+
+async function loadAccountDataFromBackend() {
+  try {
+    console.log('[loadAccountDataFromBackend] Loading LLC accounts from backend...');
+    const llcAccounts = await Api.loadLLCAccounts();
+    console.log('[loadAccountDataFromBackend] Backend returned:', JSON.stringify(llcAccounts, null, 2));
+    
+    if (llcAccounts && llcAccounts.length > 0) {
+      console.log('[loadAccountDataFromBackend] Loaded', llcAccounts.length, 'accounts from backend');
+      
+      llcAccounts.forEach(account => {
+        if (accountsData[account.slug]) {
+          accountsData[account.slug].balance = parseFloat(account.current_balance) || 0;
+          
+          if (account.transactions && account.transactions.length > 0) {
+            accountsData[account.slug].transactions = account.transactions.map(tx => ({
+              date: tx.txn_date || tx.date,
+              description: tx.description,
+              debit: parseFloat(tx.debit) || 0,
+              credit: parseFloat(tx.credit) || 0
+            }));
+          }
+          
+          if (account.financing_terms) {
+            accountsData[account.slug].financingTerms = {
+              principal: parseFloat(account.financing_terms.principal) || 0,
+              interestRate: parseFloat(account.financing_terms.interest_rate) || 0,
+              termYears: parseInt(account.financing_terms.term_years) || 0,
+              breakdown: account.financing_terms.breakdown
+            };
+          }
+        }
+      });
+    }
+    
+    const currentMonth = new Date();
+    const monthStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}`;
+    const rentData = await Api.loadRentData(monthStr);
+    
+    if (rentData && rentData.baseTenants) {
+      console.log('[loadAccountDataFromBackend] Loaded rent data for', monthStr);
+      accountsData.rent.baseTenants = rentData.baseTenants;
+      if (rentData.totalMonthlyRent) {
+        accountsData.rent.totalMonthlyRent = parseFloat(rentData.totalMonthlyRent);
+      }
+      if (rentData.currentRecord) {
+        const existingRecord = accountsData.rent.monthlyRecords.find(r => r.month === monthStr);
+        if (existingRecord) {
+          existingRecord.tenants = rentData.currentRecord.tenants;
+        } else {
+          accountsData.rent.monthlyRecords.push({
+            month: monthStr,
+            tenants: rentData.currentRecord.tenants
+          });
+        }
+      }
+    }
+    
+    console.log('[loadAccountDataFromBackend] Successfully loaded all account data from backend');
+    return true;
+  } catch (e) {
+    console.error('[loadAccountDataFromBackend] Error loading data:', e);
+    return false;
+  }
 }
 
 function calculateTotalEquity() {
@@ -722,7 +849,7 @@ function attachTransactionButtonListeners() {
     attachDeleteListeners();
   });
 
-  document.getElementById('save-tx-btn').addEventListener('click', () => {
+  document.getElementById('save-tx-btn').addEventListener('click', async () => {
     const accountId = document.getElementById('account-modal').dataset.currentAccount;
     const newTransactions = [];
     document.querySelectorAll('#transaction-table-body .transaction-row').forEach(row => {
@@ -736,6 +863,22 @@ function attachTransactionButtonListeners() {
     accountsData[accountId].transactions = newTransactions;
     recalculateBalance(accountId);
     updateDashboardBalances();
+    
+    try {
+      await Api.saveLLCAccount(accountId, {
+        name: accountsData[accountId].name,
+        subtitle: accountsData[accountId].subtitle,
+        account_type: accountsData[accountId].type,
+        current_balance: accountsData[accountId].balance,
+        transactions: newTransactions
+      });
+      console.log('[save-tx-btn] Successfully saved account data to backend');
+    } catch (e) {
+      console.error('[save-tx-btn] Failed to save account data:', e);
+      alert('Failed to save changes to server. Please try again.');
+      return;
+    }
+    
     closeModal();
   });
 
@@ -881,7 +1024,7 @@ function renderRentModal(monthStr) {
     renderRentModal(newMonthStr);
   });
 
-  document.getElementById('save-rent-btn').addEventListener('click', () => {
+  document.getElementById('save-rent-btn').addEventListener('click', async () => {
     const currentRecord = accountsData.rent.monthlyRecords.find(r => r.month === monthStr);
     let totalRent = 0;
 
@@ -902,6 +1045,20 @@ function renderRentModal(monthStr) {
     });
     accountsData.rent.totalMonthlyRent = totalRent;
     updateDashboardBalances();
+    
+    try {
+      await Api.saveRentData(monthStr, {
+        baseTenants: accountsData.rent.baseTenants,
+        currentRecord: currentRecord,
+        totalMonthlyRent: totalRent
+      });
+      console.log('[save-rent-btn] Successfully saved rent data to backend');
+    } catch (e) {
+      console.error('[save-rent-btn] Failed to save rent data:', e);
+      alert('Failed to save rent changes to server. Please try again.');
+      return;
+    }
+    
     closeModal();
   });
 }
@@ -1010,6 +1167,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log('[app.js] hydrated cached balances');
   } catch (e) {
     console.log('[app.js] hydrate cached failed', e && e.message);
+  }
+
+  try {
+    await loadAccountDataFromBackend();
+    console.log('[app.js] loaded LLC account data from backend');
+  } catch (e) {
+    console.log('[app.js] failed to load LLC data from backend', e && e.message);
   }
 
   document.querySelectorAll('.account-card').forEach(card => {
