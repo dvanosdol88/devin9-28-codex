@@ -1,0 +1,44 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:16.4-alpine
+    container_name: teller-postgres
+    environment:
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: devin
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dev -d devin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://dev:dev@db:5432/devin
+      ENVIRONMENT: sandbox
+      TELLER_CERT_B64: ""
+      TELLER_KEY_B64: ""
+    ports:
+      - "8001:8001"
+
+  tests:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://dev:dev@db:5432/devin
+      ENVIRONMENT: sandbox
+    command: pytest -q
+
+volumes:
+  pgdata:
