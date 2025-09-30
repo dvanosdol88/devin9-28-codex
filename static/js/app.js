@@ -75,13 +75,17 @@ class Api {
   
   static async saveLLCAccount(accountSlug, accountData) {
     try {
+      const payload = { slug: accountSlug, ...accountData };
+      console.log('[Api.saveLLCAccount] Saving account:', accountSlug, JSON.stringify(payload, null, 2));
       const r = await fetch(`${LLC_API}/accounts`, {
         method: 'POST',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slug: accountSlug, ...accountData })
+        body: JSON.stringify(payload)
       });
       if (!r.ok) throw new Error(`saveLLCAccount ${r.status}`);
-      return r.json();
+      const result = await r.json();
+      console.log('[Api.saveLLCAccount] Backend response:', JSON.stringify(result, null, 2));
+      return result;
     } catch (e) {
       console.error('[Api.saveLLCAccount] error:', e);
       throw e;
@@ -598,6 +602,7 @@ async function loadAccountDataFromBackend() {
   try {
     console.log('[loadAccountDataFromBackend] Loading LLC accounts from backend...');
     const llcAccounts = await Api.loadLLCAccounts();
+    console.log('[loadAccountDataFromBackend] Backend returned:', JSON.stringify(llcAccounts, null, 2));
     
     if (llcAccounts && llcAccounts.length > 0) {
       console.log('[loadAccountDataFromBackend] Loaded', llcAccounts.length, 'accounts from backend');
