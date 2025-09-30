@@ -5,6 +5,7 @@ idna==2.10
 requests==2.25.1
 urllib3==1.26.6
 SQLAlchemy>=2
+alembic>=1.13
 psycopg2-binary
 flake8
 pytest>=8.2
