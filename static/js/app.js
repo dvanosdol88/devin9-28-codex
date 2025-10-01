@@ -135,22 +135,33 @@ async function resolveAccountIds() {
 }
 
 async function fetchFreshBalances(ids) {
+  console.log('[DEBUG] fetchFreshBalances called with ids:', ids);
   const promises = [];
   if (ids.checkingId) {
     promises.push(
-      Api.getLiveBalances(ids.checkingId).catch(e => {
+      Api.getLiveBalances(ids.checkingId).then(response => {
+        console.log('[DEBUG] Checking balance API response:', response);
+        return response;
+      }).catch(e => {
         console.error('[app.js] failed to fetch checking balance', e);
+        throw e;
       })
     );
   }
   if (ids.savingsId) {
     promises.push(
-      Api.getLiveBalances(ids.savingsId).catch(e => {
+      Api.getLiveBalances(ids.savingsId).then(response => {
+        console.log('[DEBUG] Savings balance API response:', response);
+        return response;
+      }).catch(e => {
         console.error('[app.js] failed to fetch savings balance', e);
+        throw e;
       })
     );
   }
-  await Promise.all(promises);
+  const results = await Promise.all(promises);
+  console.log('[DEBUG] fetchFreshBalances completed, results:', results);
+  return results;
 }
 
 function getPersistedAccountIds() {
@@ -187,29 +198,47 @@ function persistAccountIds(ids) {
 }
 
 async function hydrateBalances(ids) {
+  console.log('[DEBUG] hydrateBalances called with ids:', ids);
   let cb = null, sb = null;
   const checkingEl = document.querySelector(ACCOUNTS_PAGE.checking.balanceEl);
   const savingsEl = document.querySelector(ACCOUNTS_PAGE.savings.balanceEl);
   try {
     if (ids.checkingId) {
+      console.log('[DEBUG] Fetching checking balance from DB for id:', ids.checkingId);
       cb = await Api.getDbBalances(ids.checkingId);
-      if (checkingEl) checkingEl.textContent = formatUSD(cb.available);
+      console.log('[DEBUG] Checking balance from DB:', cb);
+      if (checkingEl) {
+        const formattedBalance = formatUSD(cb.available);
+        console.log('[DEBUG] Setting checking balance to:', formattedBalance, 'from available:', cb.available);
+        checkingEl.textContent = formattedBalance;
+      }
     } else if (checkingEl) {
+      console.log('[DEBUG] No checking ID, setting to —');
       checkingEl.textContent = '—';
     }
-  } catch (_) {
+  } catch (e) {
+    console.error('[DEBUG] Error hydrating checking balance:', e);
     if (checkingEl) checkingEl.textContent = '—';
   }
   try {
     if (ids.savingsId) {
+      console.log('[DEBUG] Fetching savings balance from DB for id:', ids.savingsId);
       sb = await Api.getDbBalances(ids.savingsId);
-      if (savingsEl) savingsEl.textContent = formatUSD(sb.available);
+      console.log('[DEBUG] Savings balance from DB:', sb);
+      if (savingsEl) {
+        const formattedBalance = formatUSD(sb.available);
+        console.log('[DEBUG] Setting savings balance to:', formattedBalance, 'from available:', sb.available);
+        savingsEl.textContent = formattedBalance;
+      }
     } else if (savingsEl) {
+      console.log('[DEBUG] No savings ID, setting to —');
       savingsEl.textContent = '—';
     }
-  } catch (_) {
+  } catch (e) {
+    console.error('[DEBUG] Error hydrating savings balance:', e);
     if (savingsEl) savingsEl.textContent = '—';
   }
+  console.log('[DEBUG] hydrateBalances completed, returning:', { checking: cb, savings: sb });
   return { checking: cb, savings: sb };
 }
 
