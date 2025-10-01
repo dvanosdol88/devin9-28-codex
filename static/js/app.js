@@ -163,12 +163,20 @@ function getPersistedAccountIds() {
   }
 }
 
+function clearAccountIds() {
+  try {
+    localStorage.removeItem('accountIds');
+    console.log('[app.js] cleared old account IDs for fresh enrollment');
+  } catch (e) {
+    console.error('[app.js] failed to clear account IDs', e);
+  }
+}
+
 function persistAccountIds(ids) {
   try {
-    const existing = getPersistedAccountIds() || {};
     const merged = {
-      checkingId: ids.checkingId || existing.checkingId || null,
-      savingsId: ids.savingsId || existing.savingsId || null
+      checkingId: ids.checkingId || null,
+      savingsId: ids.savingsId || null
     };
     localStorage.setItem('accountIds', JSON.stringify(merged));
     return merged;
@@ -303,6 +311,8 @@ async function handleRefresh() {
             localStorage.setItem('teller:user', JSON.stringify(enrollment.user));
           }
           
+          clearAccountIds();
+          
           const ids = await resolveAccountIds();
           console.log('[app.js] resolved ids after enrollment', ids);
           
@@ -382,6 +392,8 @@ async function handleRefresh() {
           localStorage.setItem('teller:enrollment', JSON.stringify(mockEnrollment));
           localStorage.setItem('teller:user', JSON.stringify(mockEnrollment.user));
         }
+        
+        clearAccountIds();
         
         const ids = await resolveAccountIds();
         console.log('[app.js] resolved ids after simulated enrollment', ids);
