@@ -8,6 +8,7 @@ import requests
 import logging
 import sys
 from decimal import Decimal
+from sqlalchemy.exc import IntegrityError
 
 log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -105,8 +106,12 @@ class AccountsResource:
                             upsert_account(s, acct)
                             logger.info(f"[DEBUG] Adding balance snapshot: {balance_data}")
                             add_balance_snapshot(s, account_id, balance_data)
-                            s.commit()
-                            logger.info(f"[DEBUG] Successfully committed balance for {account_id}")
+                            try:
+                                s.commit()
+                                logger.info(f"[DEBUG] Successfully committed balance for {account_id}")
+                            except IntegrityError:
+                                s.rollback()
+                                logger.warning(f"Balance snapshot already exists for account {account_id}, skipping duplicate")
                 except Exception:
                     logger.error(f"Error storing balance snapshot for "
                                  f"account {account_id}", exc_info=True)
@@ -139,7 +144,11 @@ class AccountsResource:
                             upsert_account(s, acct)
                             upsert_transactions(s, account_id,
                                                 teller_response.json())
-                            s.commit()
+                            try:
+                                s.commit()
+                            except IntegrityError:
+                                s.rollback()
+                                logger.warning(f"Duplicate transaction data for account {account_id}, skipping")
                 except Exception:
                     logger.error(f"Error storing transactions for "
                                  f"account {account_id}", exc_info=True)

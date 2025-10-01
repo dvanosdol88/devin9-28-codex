@@ -60,7 +60,7 @@ def test_storage_persistence():
             stored_balance = session.query(BalanceSnapshot).filter_by(account_id=test_account_id).first()
             if stored_balance:
                 print(f"   ✅ Balance snapshot stored for account {test_account_id}")
-                print(f"      Available: {json.loads(stored_balance.raw).get('available', 'N/A')}")
+                print(f"      Available: {stored_balance.raw.get('available', 'N/A')}")
             else:
                 print("   ❌ Balance snapshot not found")
                 return False
@@ -73,8 +73,7 @@ def test_storage_persistence():
             if stored_transactions:
                 print(f"   ✅ {len(stored_transactions)} transactions stored")
                 for txn in stored_transactions:
-                    txn_data = json.loads(txn.raw)
-                    print(f"      - {txn.id}: {txn_data.get('amount', 'N/A')} - {txn_data.get('description', 'N/A')}")
+                    print(f"      - {txn.id}: {txn.raw.get('amount', 'N/A')} - {txn.raw.get('description', 'N/A')}")
             else:
                 print("   ❌ Transactions not found")
                 return False
