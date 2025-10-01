@@ -86,8 +86,12 @@ class AccountsResource:
 
     def on_get_balances(self, req, resp, account_id):
         def store_balances(client):
+            logger.info(f"[DEBUG] Fetching balance from Teller API for account {account_id}")
             teller_response = client.get_account_balances(account_id)
+            logger.info(f"[DEBUG] Teller API response status: {teller_response.status_code}")
             if teller_response.status_code == 200:
+                balance_data = teller_response.json()
+                logger.info(f"[DEBUG] Teller balance data: {balance_data}")
                 try:
                     from db import (SessionLocal, add_balance_snapshot,
                                     upsert_account)
@@ -95,12 +99,14 @@ class AccountsResource:
                         account_id)
                     if account_response.status_code == 200:
                         acct = account_response.json() or {}
-                        acct["id"] = account_id   # ensure required key
+                        acct["id"] = account_id
+                        logger.info(f"[DEBUG] Upserting account {account_id} to database")
                         with SessionLocal() as s:
                             upsert_account(s, acct)
-                            add_balance_snapshot(s, account_id,
-                                                 teller_response.json())
+                            logger.info(f"[DEBUG] Adding balance snapshot: {balance_data}")
+                            add_balance_snapshot(s, account_id, balance_data)
                             s.commit()
+                            logger.info(f"[DEBUG] Successfully committed balance for {account_id}")
                 except Exception:
                     logger.error(f"Error storing balance snapshot for "
                                  f"account {account_id}", exc_info=True)
@@ -180,6 +186,7 @@ class AccountsResource:
             resp.media = {"error": "Failed to retrieve cached transactions."}
 
     def on_get_cached_balances(self, req, resp, account_id):
+        logger.info(f"[DEBUG] Retrieving cached balance for account {account_id}")
         try:
             from db import SessionLocal, BalanceSnapshot
             with SessionLocal() as s:
@@ -188,11 +195,14 @@ class AccountsResource:
                            .order_by(BalanceSnapshot.as_of.desc())
                            .first())
                 if latest:
-                    resp.media = {
+                    balance_data = {
                         'available': str(latest.available),
                         'ledger': str(latest.ledger)
                     }
+                    logger.info(f"[DEBUG] Found cached balance for {account_id}: {balance_data}")
+                    resp.media = balance_data
                 else:
+                    logger.warning(f"[DEBUG] No cached balance found for {account_id}")
                     resp.media = {}
         except Exception:
             logger.error(f"Error retrieving cached balances for "
