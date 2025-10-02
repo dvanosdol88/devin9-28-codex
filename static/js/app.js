@@ -727,8 +727,8 @@ function updateDashboardBalances() {
   const equityEl = document.getElementById('total-equity-balance');
 
   if (propertyEl) propertyEl.textContent = formatCurrency(accountsData.propertyAsset.balance);
-  if (llcBankEl) llcBankEl.textContent = formatCurrency(accountsData.llcBank.balance);
-  if (llcSavingsEl) llcSavingsEl.textContent = formatCurrency(accountsData.llcSavings.balance);
+  if (llcBankEl && !accountsData.llcBank.isTellerAccount) llcBankEl.textContent = formatCurrency(accountsData.llcBank.balance);
+  if (llcSavingsEl && !accountsData.llcSavings.isTellerAccount) llcSavingsEl.textContent = formatCurrency(accountsData.llcSavings.balance);
   if (helocEl) helocEl.textContent = formatCurrency(accountsData.helocLoan.balance);
   if (memberLoanEl) memberLoanEl.textContent = formatCurrency(accountsData.memberLoan.balance);
   if (mortgageEl) mortgageEl.textContent = formatCurrency(accountsData.mortgageLoan.balance);
