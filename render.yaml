@@ -6,7 +6,7 @@ services:
     plan: starter
     branch: main
     buildCommand: pip install -r python/requirements.txt
-    startCommand: cd python && alembic upgrade head && python teller.py --environment development
+    startCommand: cd python && alembic upgrade head && python teller.py --environment sandbox
     envVars:
       - key: DATABASE_URL
         value: postgresql://teller_storage_user:QoDzFbBsaAeboP4cgZW75KXQTqGEt7W0@dpg-d3drlsadbo4c73dppq70-a.oregon-postgres.render.com/teller_storage?sslmode=require
@@ -15,7 +15,7 @@ services:
       - key: LOG_LEVEL
         value: INFO
       - key: ENVIRONMENT
-        value: development
+        value: sandbox
     healthCheckPath: /health
 
   - type: static
