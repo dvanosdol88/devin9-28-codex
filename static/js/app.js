@@ -106,7 +106,7 @@ class Api {
   static async saveRentData(monthStr, rentData) {
     try {
       const r = await fetch(`${LLC_API}/rent/${monthStr}`, {
-        method: 'POST',
+        method: 'PUT',  // Backend expects PUT, not POST
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify(rentData)
       });
@@ -240,6 +240,32 @@ async function hydrateBalances(ids) {
   }
   console.log('[DEBUG] hydrateBalances completed, returning:', { checking: cb, savings: sb });
   return { checking: cb, savings: sb };
+}
+
+async function refreshTellerBalances(ids) {
+  console.log('[refreshTellerBalances] Refreshing Teller balances to prevent stale data');
+  try {
+    const balances = await hydrateBalances(ids);
+
+    // Sync to accountsData for equity calculation
+    if (balances.checking && balances.checking.available) {
+      accountsData.llcBank.balance = parseFloat(balances.checking.available) || 0;
+      console.log('[refreshTellerBalances] Synced checking balance to accountsData:', accountsData.llcBank.balance);
+    }
+    if (balances.savings && balances.savings.available) {
+      accountsData.llcSavings.balance = parseFloat(balances.savings.available) || 0;
+      console.log('[refreshTellerBalances] Synced savings balance to accountsData:', accountsData.llcSavings.balance);
+    }
+
+    // Recalculate equity with updated Teller balances
+    const equityEl = document.getElementById('total-equity-balance');
+    if (equityEl) {
+      equityEl.textContent = formatCurrency(calculateTotalEquity());
+      console.log('[refreshTellerBalances] Updated equity calculation');
+    }
+  } catch (e) {
+    console.error('[refreshTellerBalances] Failed to refresh Teller balances:', e);
+  }
 }
 
 function renderTransactions(transactions) {
@@ -717,6 +743,7 @@ function calculateTotalEquity() {
 }
 
 function updateDashboardBalances() {
+  console.log('[updateDashboardBalances] Updating dashboard balances');
   const propertyEl = document.getElementById('property-asset-balance');
   const llcBankEl = document.getElementById('llc-bank-balance');
   const llcSavingsEl = document.getElementById('llc-savings-balance');
@@ -727,8 +754,20 @@ function updateDashboardBalances() {
   const equityEl = document.getElementById('total-equity-balance');
 
   if (propertyEl) propertyEl.textContent = formatCurrency(accountsData.propertyAsset.balance);
-  if (llcBankEl && !accountsData.llcBank.isTellerAccount) llcBankEl.textContent = formatCurrency(accountsData.llcBank.balance);
-  if (llcSavingsEl && !accountsData.llcSavings.isTellerAccount) llcSavingsEl.textContent = formatCurrency(accountsData.llcSavings.balance);
+
+  // CRITICAL: Skip Teller accounts - they are managed by hydrateBalances()
+  if (accountsData.llcBank.isTellerAccount) {
+    console.log('[updateDashboardBalances] Skipping balance update for llcBank because it is a Teller account.');
+  } else if (llcBankEl) {
+    llcBankEl.textContent = formatCurrency(accountsData.llcBank.balance);
+  }
+
+  if (accountsData.llcSavings.isTellerAccount) {
+    console.log('[updateDashboardBalances] Skipping balance update for llcSavings because it is a Teller account.');
+  } else if (llcSavingsEl) {
+    llcSavingsEl.textContent = formatCurrency(accountsData.llcSavings.balance);
+  }
+
   if (helocEl) helocEl.textContent = formatCurrency(accountsData.helocLoan.balance);
   if (memberLoanEl) memberLoanEl.textContent = formatCurrency(accountsData.memberLoan.balance);
   if (mortgageEl) mortgageEl.textContent = formatCurrency(accountsData.mortgageLoan.balance);
@@ -904,7 +943,7 @@ function attachTransactionButtonListeners() {
     accountsData[accountId].transactions = newTransactions;
     recalculateBalance(accountId);
     updateDashboardBalances();
-    
+
     try {
       await Api.saveLLCAccount(accountId, {
         name: accountsData[accountId].name,
@@ -919,7 +958,12 @@ function attachTransactionButtonListeners() {
       alert('Failed to save changes to server. Please try again.');
       return;
     }
-    
+
+    // Refresh Teller balances to prevent them from being stale
+    if (window.__llcIds) {
+      await refreshTellerBalances(window.__llcIds);
+    }
+
     closeModal();
   });
 
@@ -939,7 +983,10 @@ function attachDeleteListeners() {
 
 function recalculateBalance(accountId) {
   const account = accountsData[accountId];
-  if (account.type === 'personal' || account.isTellerAccount) return;
+  if (account.type === 'personal' || account.isTellerAccount) {
+    console.log(`[recalculateBalance] Skipping balance recalculation for ${accountId} (type: ${account.type}, isTellerAccount: ${account.isTellerAccount})`);
+    return;
+  }
 
   let balance = 0;
   const transactions = account.transactions;
@@ -949,6 +996,7 @@ function recalculateBalance(accountId) {
   } else if (account.type === 'liability') {
     balance = transactions.reduce((acc, tx) => acc - tx.debit + tx.credit, 0);
   }
+  console.log(`[recalculateBalance] Recalculated balance for ${accountId}: ${balance}`);
   account.balance = balance;
 }
 
@@ -1086,7 +1134,7 @@ function renderRentModal(monthStr) {
     });
     accountsData.rent.totalMonthlyRent = totalRent;
     updateDashboardBalances();
-    
+
     try {
       await Api.saveRentData(monthStr, {
         baseTenants: accountsData.rent.baseTenants,
@@ -1099,7 +1147,12 @@ function renderRentModal(monthStr) {
       alert('Failed to save rent changes to server. Please try again.');
       return;
     }
-    
+
+    // Refresh Teller balances to prevent them from being stale
+    if (window.__llcIds) {
+      await refreshTellerBalances(window.__llcIds);
+    }
+
     closeModal();
   });
 }
