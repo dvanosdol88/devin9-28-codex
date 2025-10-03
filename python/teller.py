@@ -212,8 +212,14 @@ class AccountsResource:
 
     def _proxy(self, req, resp, fun):
         token = self._extract_token(req)
+        logger.info(f"[DEBUG] Extracted token (first 10 chars): {token[:10] if token else 'EMPTY'}...")
+        logger.info(f"[DEBUG] Token length: {len(token) if token else 0}")
         user_client = self._client.for_user(token)
         teller_response = fun(user_client)
+
+        logger.info(f"[DEBUG] Teller API response status: {teller_response.status_code}")
+        if teller_response.status_code != 200:
+            logger.error(f"[DEBUG] Teller API error response: {teller_response.text[:500] if teller_response.text else 'No body'}")
 
         if teller_response.content:
             resp.media = teller_response.json()
@@ -222,14 +228,18 @@ class AccountsResource:
 
     def _extract_token(self, req):
         auth_header = req.get_header('Authorization') or ''
+        logger.info(f"[DEBUG] Raw Authorization header: {auth_header[:50] if auth_header else 'EMPTY'}...")
         if auth_header.startswith('Basic '):
             try:
                 b64 = auth_header.split(' ', 1)[1].strip()
                 decoded = base64.b64decode(b64).decode('utf-8')
                 username, _, _ = decoded.partition(':')
+                logger.info(f"[DEBUG] Extracted from Basic auth, username: {username[:10]}...")
                 return username
-            except Exception:
+            except Exception as e:
+                logger.error(f"[DEBUG] Failed to decode Basic auth: {e}")
                 return ''
+        logger.info(f"[DEBUG] Using raw header as token")
         return auth_header
 
 
