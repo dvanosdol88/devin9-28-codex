@@ -351,7 +351,7 @@ async function handleRefresh() {
       console.log('[app.js] TellerConnect SDK available, starting real authentication flow');
       const tellerConnect = TellerConnect.setup({
         applicationId: 'app_pj4c5t83p8q0ibrr8k000',
-        environment: 'sandbox',
+        environment: 'development',
         products: ['balance', 'transactions'],
         selectAccount: 'multiple',
         onSuccess: async function(enrollment) {
