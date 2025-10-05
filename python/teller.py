@@ -32,6 +32,9 @@ class TellerClient:
     def list_accounts(self):
         return self._get('/accounts')
 
+    def get_account(self, account_id):
+        return self._get(f'/accounts/{account_id}')
+
     def get_account_details(self, account_id):
         return self._get(f'/accounts/{account_id}/details')
 
@@ -95,11 +98,10 @@ class AccountsResource:
                 try:
                     from db import (SessionLocal, add_balance_snapshot,
                                     upsert_account)
-                    account_response = client.get_account_details(
-                        account_id)
+                    account_response = client.get_account(account_id)
                     if account_response.status_code == 200:
                         acct = account_response.json() or {}
-                        acct["id"] = account_id
+                        logger.info(f"[DEBUG] Account data from Teller: {acct}")
                         logger.info(f"[DEBUG] Upserting account {account_id} to database")
                         with SessionLocal() as s:
                             upsert_account(s, acct)
@@ -130,11 +132,10 @@ class AccountsResource:
                 try:
                     from db import (SessionLocal, upsert_transactions,
                                     upsert_account)
-                    account_response = client.get_account_details(
-                        account_id)
+                    account_response = client.get_account(account_id)
                     if account_response.status_code == 200:
                         acct = account_response.json() or {}
-                        acct["id"] = account_id
+                        logger.info(f"[DEBUG] Account data from Teller: {acct}")
                         with SessionLocal() as s:
                             upsert_account(s, acct)
                             upsert_transactions(s, account_id,
