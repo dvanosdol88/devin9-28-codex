@@ -58,13 +58,13 @@ Move the certificates into that new folder:
 
 Bash
 
-# Make sure to use the correct filename (e.g., certificate.pem)
-mv certificate.pem private_key.pem ~/certs/
+# Make sure to use the correct filename (e.g., cert.pem)
+mv cert.pem private_key.pem ~/certs/
 Start the server using the new WSL-native path:
 
 Bash
 
-../.venv/bin/python teller.py --environment development --cert ~/certs/certificate.pem --cert-key ~/certs/private_key.pem
+../.venv/bin/python teller.py --environment development --cert ~/certs/cert.pem --cert-key ~/certs/private_key.pem
 
 
 
