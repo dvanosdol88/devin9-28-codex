@@ -4,6 +4,8 @@ __pycache__/
 
 # Virtual environments
 .venv/
+.venv-codex/
+.venv-devin/
 
 # Local environment files
 .env
@@ -14,6 +16,8 @@ __pycache__/
 python/*.db
 python/devin_teller.db
 python/devin_teller.db.backup
+dt_codex.db
+dt_devin.db
 
 # TLS certificates / private keys (never commit)
 cert.pem
@@ -28,3 +32,6 @@ node_modules/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Test results
+test-results/
