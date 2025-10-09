@@ -1,15 +1,7 @@
 const APPLICATION_ID = 'app_pj4c5t83p8q0ibrr8k000'
 const ENVIRONMENT = 'development';
 
-function getBaseURL() {
-  const hostname = window.location.hostname;
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    return 'http://localhost:8001/api';
-  }
-  return 'https://devin-teller-api.onrender.com/api';
-}
-
-const BASE_URL = getBaseURL();
+const BASE_URL = '/api';
 
 class TellerStore {
   constructor() {
@@ -93,18 +85,150 @@ class Client {
   }
 
   request(method, path, data) {
+    const headers = new Headers({
+      'Content-Type': 'application/json',
+    });
+    if (this.accessToken) {
+      headers.set('Authorization', `Bearer ${this.accessToken}`);
+    }
     const request = new Request(this.baseURL + path, {
       method: method,
-      headers: new Headers({
-        'Authorization': this.accessToken,
-        'Content-Type': 'application/json',
-      }),
+      headers,
       body: data,
     });
-
     return fetch(request);
   }
 }
+class FlipCards {
+  constructor(client, container) {
+    this.client = client;
+    this.container = container;
+  }
+
+  async renderAccount(account) {
+    const card = document.createElement('div');
+    card.className = 'flip-card w-full max-w-md mx-auto my-4';
+    card.innerHTML = `
+      <div class="flip-card-inner">
+        <div class="flip-card-front bg-gradient-to-br from-sky-500 to-emerald-500 text-white shadow-xl rounded-xl p-5">
+          <div class="flex justify-between items-center">
+            <div>
+              <div class="text-sm opacity-80">${account.institution?.name || ''}</div>
+              <div class="text-xl font-bold">${account.name || account.subtype || account.type}</div>
+            </div>
+            <button class="refresh-live bg-white/20 hover:bg-white/30 text-white px-3 py-1 rounded-md">Refresh Live</button>
+          </div>
+          <div class="mt-4">
+            <div class="text-sm opacity-80">Available</div>
+            <div class="text-2xl font-semibold" data-role="available">$—</div>
+          </div>
+          <div class="mt-2">
+            <div class="text-sm opacity-80">Ledger</div>
+            <div class="text-lg" data-role="ledger">$—</div>
+          </div>
+          <div class="mt-4 text-sm opacity-80">Click to view recent transactions</div>
+        </div>
+        <div class="flip-card-back bg-white text-slate-800 shadow-xl rounded-xl p-5">
+          <div class="flex justify-between items-center">
+            <div class="text-xl font-bold">Recent Transactions</div>
+            <div class="text-sm text-slate-500">Last 10</div>
+          </div>
+          <div class="mt-3 space-y-2" data-role="txns"></div>
+          <div class="mt-4 text-sm text-slate-500">Click to flip back</div>
+        </div>
+      </div>
+    `;
+
+    const setCurrency = (el, v) => {
+      if (!el) return;
+      if (v === undefined || v === null || v === '') { el.textContent = '$—'; return; }
+      const n = Number(v);
+      el.textContent = n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
+    };
+
+    const frontAvailable = card.querySelector('[data-role="available"]');
+    const frontLedger = card.querySelector('[data-role="ledger"]');
+    const txnsEl = card.querySelector('[data-role="txns"]');
+
+    await this.loadCachedBalances(account, (b) => {
+      setCurrency(frontAvailable, b.available);
+      setCurrency(frontLedger, b.ledger);
+    });
+
+    await this.loadCachedTransactions(account, 10, (txns) => {
+      txnsEl.innerHTML = '';
+      txns.forEach(t => {
+        const row = document.createElement('div');
+        row.className = 'flex justify-between items-center border-b border-slate-100 pb-1';
+        const amt = Number(t.amount);
+        row.innerHTML = `
+          <div class="text-sm truncate max-w-[70%]">${t.description || t.details || ''}</div>
+          <div class="text-sm font-medium ${amt < 0 ? 'text-rose-600' : 'text-emerald-600'}">
+            ${amt.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+          </div>
+        `;
+        txnsEl.appendChild(row);
+      });
+    });
+
+    const inner = card.querySelector('.flip-card-inner');
+    card.addEventListener('click', (e) => {
+      if ((e.target).classList.contains('refresh-live')) return;
+      inner.classList.toggle('is-flipped');
+    });
+
+    const refreshBtn = card.querySelector('.refresh-live');
+    refreshBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        await Promise.all([
+          this.client.get(`/accounts/${account.id}/balances`),
+          this.client.get(`/accounts/${account.id}/transactions?count=10`),
+        ]);
+      } catch (_) {}
+      await this.loadCachedBalances(account, (b) => {
+        setCurrency(frontAvailable, b.available);
+        setCurrency(frontLedger, b.ledger);
+      });
+      await this.loadCachedTransactions(account, 10, (txns) => {
+        txnsEl.innerHTML = '';
+        txns.forEach(t => {
+          const row = document.createElement('div');
+          row.className = 'flex justify-between items-center border-b border-slate-100 pb-1';
+          const amt = Number(t.amount);
+          row.innerHTML = `
+            <div class="text-sm truncate max-w-[70%]">${t.description || t.details || ''}</div>
+            <div class="text-sm font-medium ${amt < 0 ? 'text-rose-600' : 'text-emerald-600'}">
+              ${amt.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+            </div>
+          `;
+          txnsEl.appendChild(row);
+        });
+      });
+    });
+
+    this.container.appendChild(card);
+  }
+
+  async loadCachedBalances(account, cb) {
+    try {
+      const r = await fetch(`${BASE_URL}/db/accounts/${account.id}/balances`);
+      if (!r.ok) return;
+      const b = await r.json();
+      cb(b || {});
+    } catch (_) {}
+  }
+
+  async loadCachedTransactions(account, limit, cb) {
+    try {
+      const r = await fetch(`${BASE_URL}/db/accounts/${account.id}/transactions?limit=${limit}`);
+      if (!r.ok) return;
+      const txns = await r.json();
+      cb(txns || []);
+    } catch (_) {}
+  }
+}
+
 
 class EnrollmentHandler {
   constructor(client, containers, templates) {
@@ -126,20 +250,24 @@ class EnrollmentHandler {
     console.log("onEnrollment called");
     this.client.listAccounts()
       .then(function(response) {
-        console.log("listAccounts response:", response);
         return response.json();
       })
-      .then(function(accounts) {
-        console.log("listAccounts accounts:", accounts);
-        accounts.forEach(function(account) {
-          const node = template.render(account, callbacks);
-          container.appendChild(node);
+      .then((accounts) => {
+        let cardsContainer = document.getElementById('cards-container');
+        if (!cardsContainer) {
+          cardsContainer = document.createElement('div');
+          cardsContainer.id = 'cards-container';
+          cardsContainer.className = 'grid grid-cols-1 md:grid-cols-2 gap-6 my-6';
+          this.containers.root.prepend(cardsContainer);
+        }
+        const cards = new FlipCards(this.client, cardsContainer);
+        cardsContainer.innerHTML = '';
+        accounts.forEach((account) => {
+          cards.renderAccount(account);
         });
-
         spinner.hide();
       })
       .catch(function(error) {
-        console.error("Error in onEnrollment:", error);
         spinner.hide();
       });
   }
