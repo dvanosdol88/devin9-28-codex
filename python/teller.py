@@ -8,6 +8,8 @@ import requests
 import logging
 import sys
 from decimal import Decimal
+import mimetypes
+from urllib.parse import unquote
 
 log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -225,6 +227,7 @@ class AccountsResource:
         if teller_response.content:
             resp.media = teller_response.json()
 
+        resp.set_header('Cache-Control', 'no-store')
         resp.status = falcon.code_to_http_status(teller_response.status_code)
 
     def _extract_token(self, req):
@@ -242,6 +245,41 @@ class AccountsResource:
                 return ''
         logger.info(f"[DEBUG] Using raw header as token")
         return auth_header
+
+class StaticRootResource:
+    def __init__(self, static_dir):
+        self.static_dir = static_dir
+
+    def on_get(self, req, resp):
+        index_path = os.path.join(self.static_dir, 'index.html')
+        if not os.path.isfile(index_path):
+            raise falcon.HTTPNotFound()
+        with open(index_path, 'rb') as f:
+            data = f.read()
+        resp.content_type = 'text/html; charset=utf-8'
+        resp.data = data
+        resp.set_header('Cache-Control', 'public, max-age=86400, immutable')
+
+
+class StaticFileResource:
+    def __init__(self, static_dir):
+        self.static_dir = static_dir
+
+    def on_get(self, req, resp, path):
+        safe_path = unquote(path)
+        safe_path = safe_path.lstrip('/').replace('\\', '/')
+        full_path = os.path.normpath(os.path.join(self.static_dir, safe_path))
+        if not full_path.startswith(os.path.abspath(self.static_dir)):
+            raise falcon.HTTPForbidden(description='Invalid path')
+        if not os.path.isfile(full_path):
+            raise falcon.HTTPNotFound()
+
+        mime, _ = mimetypes.guess_type(full_path)
+        if mime:
+            resp.content_type = mime
+        with open(full_path, 'rb') as f:
+            resp.data = f.read()
+        resp.set_header('Cache-Control', 'public, max-age=86400, immutable')
 
 
 def _parse_args():
@@ -306,6 +344,10 @@ def main():
                   suffix='cached_transactions')
     app.add_route('/api/db/accounts/{account_id}/balances', accounts,
                   suffix='cached_balances')
+
+    static_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'static'))
+    app.add_route('/', StaticRootResource(static_dir))
+    app.add_route('/static/{path}', StaticFileResource(static_dir))
 
     port = os.getenv('PORT') or '8001'
 

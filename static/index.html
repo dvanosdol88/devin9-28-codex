@@ -49,6 +49,24 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+    <style>
+      .flip-card { perspective: 1000px; }
+      .flip-card-inner {
+        position: relative;
+        width: 100%;
+        transform-style: preserve-3d;
+        transition: transform 0.6s;
+      }
+      .flip-card-inner.is-flipped { transform: rotateY(180deg); }
+      .flip-card-front, .flip-card-back {
+        backface-visibility: hidden;
+        -webkit-backface-visibility: hidden;
+        width: 100%;
+        min-height: 200px;
+      }
+      .flip-card-back { transform: rotateY(180deg); }
+    </style>
+
     </style>
 </head>
 <body class="antialiased">
